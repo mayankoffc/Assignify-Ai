@@ -1,9 +1,13 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import * as pdfjsLib from 'pdfjs-dist';
 import { PaperSheet } from './components/PaperSheet';
 import { FALLBACK_SOLUTIONS, AI_SYSTEM_PROMPT } from './constants';
 import { RefreshCcw, Camera, Eye, PenTool, Minus, Plus, UploadCloud, FileText, Loader, ArrowLeft, Sparkles } from 'lucide-react';
 import { AppState, UploadedFile, QuestionSolution } from './types';
 import { GoogleGenAI } from "@google/genai";
+
+// Set PDF.js worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
 // --- GENERATIVE AI INTEGRATION ---
 
@@ -36,46 +40,70 @@ const generateIllustrationWithGemini = async (prompt: string): Promise<string | 
 
 const solveWithGemini = async (fileData: string): Promise<QuestionSolution[]> => {
     try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        
-        // Clean base64 string
-        const base64Data = fileData.split(',')[1];
-        const mimeType = fileData.split(';')[0].split(':')[1];
-
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: {
-                parts: [
-                    { inlineData: { mimeType: mimeType, data: base64Data } },
-                    { text: AI_SYSTEM_PROMPT }
-                ]
-            },
-            config: {
-                responseMimeType: "application/json",
-            }
-        });
-
-        let text = response.text;
-        if (!text) throw new Error("No response from AI");
-        
-        // Clean up markdown code blocks if present
-        text = text.replace(/```json/g, '').replace(/```/g, '').trim();
-        
-        try {
-            const solutions = JSON.parse(text);
-            return solutions;
-        } catch (jsonError) {
-            console.error("JSON Parse Error:", jsonError);
-            // Attempt to recover partial JSON or return fallback
-            throw new Error("Failed to parse AI response");
-        }
-    } catch (e) {
-        console.error("Solver Error:", e);
-        // Return fallback if real generation fails (graceful degradation)
+      // Check if API key exists
+      if (!process.env.API_KEY || process.env.API_KEY.trim() === '') {
+        console.warn("⚠️ API_KEY not configured. Using fallback solutions for demo.");
         return FALLBACK_SOLUTIONS;
+      }
+
+      // Detect PDF and extract text using pdfjs-dist
+      let extractedText = '';
+      if (fileData.startsWith('data:application/pdf')) {
+        try {
+          const base64Data = fileData.split(',')[1];
+          const pdfBuffer = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+          const pdf = await pdfjsLib.getDocument({ data: pdfBuffer }).promise;
+          let fullText = '';
+          
+          for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const textContent = await page.getTextContent();
+            const pageText = textContent.items.map((item: any) => item.str).join(' ');
+            fullText += pageText + '\n';
+          }
+          
+          extractedText = fullText.trim();
+        } catch (pdfError) {
+          console.warn("PDF extraction failed:", pdfError);
+          extractedText = '[PDF could not be parsed. Analyzing as image...]';
+        }
+      }
+
+      // If not PDF, fallback to image or raw text
+      if (!extractedText || extractedText.length < 10) {
+        extractedText = '[Non-PDF or empty PDF uploaded. Please upload a PDF with content for best results.]';
+      }
+
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const prompt = `${AI_SYSTEM_PROMPT}\n\nHere is the assignment content:\n${extractedText}`;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: {
+          parts: [
+            { text: prompt }
+          ]
+        },
+        config: {
+          responseMimeType: "application/json",
+        }
+      });
+
+      let text = response.text;
+      if (!text) throw new Error("No response from AI");
+      text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+      try {
+        const solutions = JSON.parse(text);
+        return solutions;
+      } catch (jsonError) {
+        console.error("JSON Parse Error:", jsonError);
+        throw new Error("Failed to parse AI response");
+      }
+    } catch (e) {
+      console.error("Solver Error:", e);
+      return FALLBACK_SOLUTIONS;
     }
 };
-
 // --- HANDWRITING ENGINE ---
 
 const seededRandom = (seed: number) => {
@@ -248,7 +276,7 @@ const HandwrittenDiagram: React.FC<{ type: string; seed: number }> = ({ type, se
     return (
        <div className="w-full my-6 flex justify-center">
          <div className="relative p-2 bg-white shadow-md border border-gray-200 transform transition-all duration-700" style={{ transform: `rotate(${randomRange(seed, -1, 1)}deg)` }}>
-           <div className="w-[350px] min-h-[220px] bg-gray-50 relative overflow-hidden flex flex-col items-center justify-center border border-gray-300">
+           <div className="w-full max-w-2xl min-h-[300px] bg-gray-50 relative overflow-hidden flex flex-col items-center justify-center border border-gray-300">
                {loading && <div className="absolute inset-0 flex items-center justify-center bg-gray-100 z-20"><Loader className="animate-spin text-gray-400" /></div>}
                {imageUrl ? (
                    <img src={imageUrl} alt="Generated Illustration" className="w-full h-full object-cover mix-blend-multiply opacity-90 filter contrast-125" />
@@ -266,8 +294,8 @@ const HandwrittenDiagram: React.FC<{ type: string; seed: number }> = ({ type, se
   // Standard Pencil Sketches
   return (
     <div className="w-full my-6 flex justify-center">
-      <div className="relative p-2" style={{ transform: `rotate(${randomRange(seed, -1.5, 1.5)}deg)` }}>
-        <svg width="350" height="220" viewBox="0 0 350 220" className="overflow-visible">
+      <div className="relative p-2 w-full flex justify-center" style={{ transform: `rotate(${randomRange(seed, -1.5, 1.5)}deg)` }}>
+        <svg width="100%" height="auto" viewBox="0 0 350 220" className="overflow-visible max-w-2xl" style={{ minHeight: "300px" }}>
           {type === 'Q1_GRAPH' && (
             <>
               <PencilArrow x1={40} y1={180} x2={300} y2={180} seed={seed} />
@@ -464,8 +492,8 @@ const UploadScreen: React.FC<{ onUpload: (file: UploadedFile) => void }> = ({ on
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[80vh] w-full px-4 text-green-500 font-mono">
-      <div className="w-full max-w-2xl border border-green-500/50 bg-black/80 p-6 rounded-sm shadow-[0_0_20px_rgba(0,255,0,0.2)]">
+    <div className="flex flex-col items-center justify-center min-h-[80vh] w-full px-2 text-green-500 font-mono">
+      <div className="w-full max-w-4xl border border-green-500/50 bg-black/80 p-6 rounded-sm shadow-[0_0_20px_rgba(0,255,0,0.2)]">
         <div className="flex justify-between items-center mb-6 border-b border-green-800 pb-2">
            <div className="flex gap-2"><div className="w-3 h-3 rounded-full bg-red-500/50"></div><div className="w-3 h-3 rounded-full bg-yellow-500/50"></div><div className="w-3 h-3 rounded-full bg-green-500/50"></div></div>
            <span className="text-xs uppercase tracking-widest text-green-700">ROOT@SYSTEM:~/ASSIGNMENT_GEN</span>
@@ -473,8 +501,8 @@ const UploadScreen: React.FC<{ onUpload: (file: UploadedFile) => void }> = ({ on
 
         <div className="space-y-6">
            <div className="typewriter">
-             <p className="text-xl terminal-text">> INITIALIZING PHYSICS_SOLVER_V3.1...</p>
-             <p className="text-sm text-green-700 mt-1">> SYSTEM READY. WAITING FOR PDF/IMAGE INPUT.</p>
+             <p className="text-xl terminal-text">&gt; INITIALIZING PHYSICS_SOLVER_V3.1...</p>
+             <p className="text-sm text-green-700 mt-1">&gt; SYSTEM READY. WAITING FOR PDF/IMAGE INPUT.</p>
            </div>
            
            <div 
@@ -532,7 +560,7 @@ const ProcessingScreen: React.FC<{ file: UploadedFile | null, onComplete: (solut
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[80vh] w-full px-4 text-green-500 font-mono">
-      <div className="w-full max-w-2xl border border-green-500/50 bg-black p-8 shadow-[0_0_30px_rgba(0,255,0,0.15)] relative overflow-hidden">
+      <div className="w-full max-w-5xl border border-green-500/50 bg-black p-8 shadow-[0_0_30px_rgba(0,255,0,0.15)] relative overflow-hidden">
          <div className="absolute inset-0 bg-[linear-gradient(0deg,rgba(0,0,0,0)_50%,rgba(0,255,0,0.02)_50%)] bg-[length:100%_4px] pointer-events-none"></div>
          <div className="mb-6 flex items-center gap-4">
             <Loader className="animate-spin text-green-400" size={32} />
