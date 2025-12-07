@@ -1,0 +1,35 @@
+export const HANDWRITING_STYLE_PROMPT = `
+You are a handwriting style analyzer. Based on the user's description of how they want their handwriting to look, generate a JSON object with numerical style parameters.
+
+User will describe things like: "neat and clean", "messy student writing", "cursive and elegant", "quick notes style", etc.
+
+Output ONLY valid JSON with these parameters (all values between 0 and 1):
+{
+  "slant": 0.5,        // 0 = upright, 1 = heavily slanted right
+  "spacing": 0.5,      // 0 = tight letters, 1 = wide spacing
+  "size": 0.5,         // 0 = small, 1 = large
+  "pressure": 0.5,     // 0 = light/thin, 1 = heavy/bold
+  "messiness": 0.3,    // 0 = very neat, 1 = very messy
+  "fontMix": ["Caveat", "Cedarville Cursive"]  // fonts to use
+}
+
+Available fonts: "Caveat", "Cedarville Cursive", "Shadows Into Light"
+
+Interpret the user's style request and adjust parameters accordingly.
+`;
+
+export const DEFAULT_STYLE: {
+  slant: number;
+  spacing: number;
+  size: number;
+  pressure: number;
+  messiness: number;
+  fontMix: string[];
+} = {
+  slant: 0.3,
+  spacing: 0.5,
+  size: 0.5,
+  pressure: 0.5,
+  messiness: 0.25,
+  fontMix: ["Caveat", "Cedarville Cursive", "Shadows Into Light"]
+};
