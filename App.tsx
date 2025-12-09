@@ -3,8 +3,9 @@ import * as pdfjsLib from 'pdfjs-dist';
 // @ts-ignore
 import { GlobalWorkerOptions } from 'pdfjs-dist/build/pdf';
 import { HANDWRITING_STYLE_PROMPT, LAYOUT_ANALYSIS_PROMPT, DEFAULT_STYLE } from './constants';
+import { PaperSheet } from './components/PaperSheet';
 import { RefreshCcw, Camera, Eye, PenTool, Minus, Plus, UploadCloud, FileText, Loader, ArrowLeft, Sparkles, Wand2 } from 'lucide-react';
-import { AppState, UploadedFile, ProcessedPage, HandwritingStyle, TextRegion } from './types';
+import { AppState, UploadedFile, ProcessedPage, HandwritingStyle, Region } from './types';
 import { GoogleGenAI } from "@google/genai";
 
 // Set PDF.js worker
@@ -35,7 +36,7 @@ const analyzeStyleWithGemini = async (userPrompt: string): Promise<HandwritingSt
     return DEFAULT_STYLE;
 };
 
-const analyzeLayoutWithGemini = async (imageBase64: string): Promise<TextRegion[]> => {
+const analyzeLayoutWithGemini = async (imageBase64: string): Promise<Region[]> => {
     try {
         if (!process.env.API_KEY) return [];
 
@@ -103,47 +104,80 @@ const HandwrittenChar: React.FC<{ char: string; seed: number; style: Handwriting
     const isMath = /[0-9=+\-×÷∝]/.test(char);
 
     // Style variations based on HandwritingStyle
-    const rotation = randomRange(seed, -style.slant * 5, style.slant * 5) + randomRange(seed + 1, -2, 2) * style.messiness;
-    const yOffset = randomRange(seed + 2, -0.2, 0.2) * style.messiness * 5;
-    const scale = style.size * (1 + randomRange(seed + 3, -0.05, 0.05) * style.messiness);
+    const rotation = randomRange(seed, -style.slant * 8, style.slant * 8) + randomRange(seed + 1, -3, 3) * style.messiness;
+    const yOffset = randomRange(seed + 2, -0.3, 0.3) * style.messiness * 6;
+    const scale = style.size * (1 + randomRange(seed + 3, -0.08, 0.08) * style.messiness);
+
+    // Simulating ink flow thickness variations
+    const strokeWidthVariation = randomRange(seed + 4, -0.1, 0.1);
 
     const charStyle = {
         display: 'inline-block',
         transform: `rotate(${rotation}deg) translateY(${yOffset}px) scale(${scale})`,
-        marginRight: `${style.spacing * 0.5 + randomRange(seed + 4, -0.2, 0.2)}px`,
+        marginRight: `${style.spacing * 0.5 + randomRange(seed + 5, -0.2, 0.2)}px`,
         fontFamily: style.fontFamily,
-        fontWeight: style.weight > 1.2 ? 700 : 400,
+        fontWeight: (style.weight + strokeWidthVariation) > 1.2 ? 700 : 400,
         color: style.color,
-        opacity: 0.85 + randomRange(seed + 5, 0, 0.15),
-        filter: 'contrast(1.2) brightness(0.9)',
-        textShadow: style.weight > 1.2 ? `0.2px 0 0 ${style.color}` : 'none',
+        // Ink blot effect simulation via opacity variation
+        opacity: 0.8 + randomRange(seed + 6, 0, 0.2),
+        filter: 'contrast(1.3) brightness(0.9)',
+        // Slight text shadow for ink bleed look
+        textShadow: style.weight > 0.8 ? `0.1px 0.1px 0 ${style.color}cc` : 'none',
     };
 
     if (char === ' ') return <span style={{ display: 'inline-block', width: `${6 * style.spacing}px` }}></span>;
     if (char === '\n') return <br />;
 
     return (
-        <span style={charStyle} className="select-none">
+        <span style={charStyle} className="select-none relative">
             {char}
         </span>
     );
 };
 
-const HandwrittenBlock: React.FC<{ text: string; box: any; seed: number; style: HandwritingStyle }> = ({ text, box, seed, style }) => {
+const HandwrittenBlock: React.FC<{ region: Region; originalImage: string; seed: number; style: HandwritingStyle }> = ({ region, originalImage, seed, style }) => {
     // Convert 0-1000 coordinates to percentage
-    const top = box.ymin / 10;
-    const left = box.xmin / 10;
-    const width = (box.xmax - box.xmin) / 10;
-    const height = (box.ymax - box.ymin) / 10;
+    const top = region.box.ymin / 10;
+    const left = region.box.xmin / 10;
+    const width = (region.box.xmax - region.box.xmin) / 10;
+    const height = (region.box.ymax - region.box.ymin) / 10;
 
-    // Estimate font size based on box height and line count (rough approx)
-    const lines = text.split('\n');
-    // const estimatedLineHeight = height / lines.length;
-    // const fontSize = Math.min(Math.max(estimatedLineHeight * 0.7, 12), 24); // Clamp font size
+    // --- IMAGE REGION RENDERER ---
+    if (region.type === 'image') {
+        return (
+            <div
+                style={{
+                    position: 'absolute',
+                    top: `${top}%`,
+                    left: `${left}%`,
+                    width: `${width}%`,
+                    height: `${height}%`,
+                    // Clip the original image to show only this region
+                    backgroundImage: `url(${originalImage})`,
+                    backgroundPosition: `${(region.box.xmin / 1000) * 100}% ${(region.box.ymin / 1000) * 100}%`,
+                    // We need to adjust background size relative to the container size vs crop size
+                    // Actually, simpler to use a wrapper with overflow hidden and absolute img
+                }}
+                className="overflow-hidden border border-gray-200/20 mix-blend-multiply rotate-1"
+            >
+                <div style={{
+                    position: 'absolute',
+                    top: `-${(region.box.ymin / (region.box.ymax - region.box.ymin)) * 100}%`,
+                    left: `-${(region.box.xmin / (region.box.xmax - region.box.xmin)) * 100}%`,
+                    width: `${(1000 / (region.box.xmax - region.box.xmin)) * 100}%`,
+                    height: `${(1000 / (region.box.ymax - region.box.ymin)) * 100}%`,
+                }}>
+                     <img
+                        src={originalImage}
+                        style={{ width: '100%', height: '100%', objectFit: 'fill' }}
+                        alt="Diagram"
+                     />
+                </div>
+            </div>
+        );
+    }
 
-    // Using a fixed relative size for now, user can adjust scaling globally if needed,
-    // but better to let it flow naturally or use a standard size.
-    // Let's use a standard size modified by the style.size
+    // --- TEXT REGION RENDERER ---
     const fontSize = 16 * style.size;
 
     return (
@@ -157,16 +191,11 @@ const HandwrittenBlock: React.FC<{ text: string; box: any; seed: number; style: 
                 fontSize: `${fontSize}px`,
                 lineHeight: `${1.5 * style.spacing}`,
                 zIndex: 10,
-                // Background to cover original text.
-                // Using a slight blur and white/off-white background
-                backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                // padding: '2px',
-                borderRadius: '2px',
-                overflow: 'hidden' // Clip if it gets too wild? Or visible?
+                color: style.color,
             }}
             className="handwritten-block"
         >
-            {text.split('').map((char, i) => (
+            {region.content.split('').map((char, i) => (
                 <HandwrittenChar key={i} char={char} seed={seed + i} style={style} index={i} />
             ))}
         </div>
@@ -199,23 +228,24 @@ const UploadScreen: React.FC<{ onStart: (file: UploadedFile, prompt: string) => 
 
     return (
         <div className="flex flex-col items-center justify-center min-h-[90vh] w-full px-4 font-mono text-gray-200">
-            <div className="w-full max-w-2xl bg-gray-900 border border-gray-700 p-8 rounded-xl shadow-2xl">
+            <div className="w-full max-w-2xl bg-gray-900 border border-gray-700 p-8 rounded-xl shadow-2xl relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500"></div>
                 <div className="mb-8 text-center">
-                    <h1 className="text-3xl font-bold text-white mb-2">Assignment Real Generator</h1>
-                    <p className="text-gray-400">Transform digital documents into realistic handwriting. Preserves layout & images.</p>
+                    <h1 className="text-3xl font-bold text-white mb-2 tracking-tight">Assignment Real Generator</h1>
+                    <p className="text-gray-400">Transform digital documents into realistic handwritten paper. Preserves diagrams.</p>
                 </div>
 
                 <div className="space-y-6">
                     <div>
                         <label className="block text-sm font-medium text-gray-300 mb-2">
-                            <Wand2 size={16} className="inline mr-2" />
+                            <Wand2 size={16} className="inline mr-2 text-purple-400" />
                             Handwriting Style Prompt
                         </label>
                         <textarea
                             value={prompt}
                             onChange={(e) => setPrompt(e.target.value)}
                             placeholder="Describe the handwriting style (e.g., 'Messy student writing with blue ballpoint pen', 'Neat cursive with black ink')..."
-                            className="w-full h-24 bg-gray-800 border border-gray-600 rounded-lg p-3 text-white focus:ring-2 focus:ring-blue-500 focus:outline-none placeholder-gray-500 resize-none"
+                            className="w-full h-24 bg-gray-800 border border-gray-600 rounded-lg p-3 text-white focus:ring-2 focus:ring-purple-500 focus:outline-none placeholder-gray-500 resize-none transition-all"
                         />
                     </div>
 
@@ -225,10 +255,11 @@ const UploadScreen: React.FC<{ onStart: (file: UploadedFile, prompt: string) => 
                         onDragOver={(e) => e.preventDefault()}
                         onDrop={(e) => { e.preventDefault(); setDragActive(false); handleFiles(e.dataTransfer.files); }}
                         onClick={() => inputRef.current?.click()}
-                        className={`border-2 border-dashed h-40 flex flex-col items-center justify-center cursor-pointer transition-all rounded-xl ${dragActive ? 'bg-blue-900/20 border-blue-500' : 'border-gray-600 hover:border-blue-500 hover:bg-gray-800'}`}
+                        className={`border-2 border-dashed h-40 flex flex-col items-center justify-center cursor-pointer transition-all rounded-xl relative overflow-hidden ${dragActive ? 'bg-purple-900/20 border-purple-500' : 'border-gray-600 hover:border-purple-500 hover:bg-gray-800'}`}
                     >
-                        <UploadCloud className="text-gray-400 mb-3" size={40} />
-                        <p className="text-sm text-gray-300">Click or Drag PDF / Image here</p>
+                        <UploadCloud className={`text-gray-400 mb-3 transition-transform ${dragActive ? 'scale-110 text-purple-400' : ''}`} size={40} />
+                        <p className="text-sm text-gray-300 font-medium">Click or Drag PDF / Image here</p>
+                        <p className="text-xs text-gray-500 mt-1">Supported: PDF, JPG, PNG</p>
                         <input type="file" ref={inputRef} className="hidden" accept=".pdf,image/*" onChange={(e) => handleFiles(e.target.files)} />
                     </div>
                 </div>
@@ -238,55 +269,85 @@ const UploadScreen: React.FC<{ onStart: (file: UploadedFile, prompt: string) => 
 };
 
 const ProcessingScreen: React.FC = () => {
+    const [status, setStatus] = useState("Initializing AI Models...");
+
+    useEffect(() => {
+        const steps = [
+            "Initializing AI Models...",
+            "Analyzing Document Layout...",
+            "Detecting Diagrams & Images...",
+            "Generating Handwriting Styles...",
+            "Composing Final Pages..."
+        ];
+        let i = 0;
+        const interval = setInterval(() => {
+            if (i < steps.length - 1) {
+                i++;
+                setStatus(steps[i]);
+            }
+        }, 1500);
+        return () => clearInterval(interval);
+    }, []);
+
     return (
         <div className="flex flex-col items-center justify-center min-h-screen w-full bg-black text-white">
-            <Loader className="animate-spin text-blue-500 mb-4" size={48} />
-            <h2 className="text-2xl font-bold mb-2">Analyzing Document...</h2>
-            <p className="text-gray-400">Parsing text and layout structure. This may take a moment.</p>
+            <div className="relative">
+                <div className="absolute inset-0 bg-purple-500 blur-xl opacity-20 animate-pulse"></div>
+                <Loader className="animate-spin text-purple-500 mb-6 relative z-10" size={64} />
+            </div>
+            <h2 className="text-2xl font-bold mb-2 tracking-widest uppercase">Processing</h2>
+            <p className="text-purple-300 font-mono text-sm border-r-2 border-purple-500 pr-2 animate-pulse">{status}</p>
         </div>
     );
 };
 
 const ResultsScreen: React.FC<{ pages: ProcessedPage[], style: HandwritingStyle, onReset: () => void }> = ({ pages, style, onReset }) => {
     const [globalSeed, setGlobalSeed] = useState(Date.now());
-    
+
     return (
-        <div className="min-h-screen bg-gray-100 flex flex-col items-center py-8">
-            <div className="sticky top-4 z-50 flex gap-4 bg-white/80 backdrop-blur px-6 py-3 rounded-full shadow-lg border border-gray-200 mb-8 no-print">
-                <button onClick={onReset} className="flex items-center gap-2 text-gray-700 hover:text-black">
+        <div className="min-h-screen bg-[#1a1a1a] flex flex-col items-center py-8">
+            <div className="sticky top-4 z-50 flex gap-4 bg-gray-900/90 backdrop-blur px-6 py-3 rounded-full shadow-2xl border border-gray-700 mb-8 no-print text-gray-200">
+                <button onClick={onReset} className="flex items-center gap-2 hover:text-white transition-colors">
                     <ArrowLeft size={16} /> New Upload
                 </button>
-                <div className="w-px bg-gray-300 mx-2"></div>
-                <button onClick={() => setGlobalSeed(Date.now())} className="flex items-center gap-2 text-blue-600 hover:text-blue-800">
+                <div className="w-px bg-gray-700 mx-2"></div>
+                <button onClick={() => setGlobalSeed(Date.now())} className="flex items-center gap-2 text-purple-400 hover:text-purple-300 transition-colors">
                     <RefreshCcw size={16} /> Regenerate
                 </button>
-                <button onClick={() => window.print()} className="flex items-center gap-2 text-green-600 hover:text-green-800">
-                    <Camera size={16} /> Print / Save PDF
+                <button onClick={() => window.print()} className="flex items-center gap-2 text-green-400 hover:text-green-300 transition-colors">
+                    <Camera size={16} /> Print / Save
                 </button>
             </div>
 
-            <div className="flex flex-col gap-8 w-full items-center print:gap-0 print:w-full">
+            <div className="flex flex-col gap-12 w-full items-center print:gap-0 print:w-full">
                 {pages.map((page, i) => (
-                    <div key={i} className="relative bg-white shadow-2xl print:shadow-none print:break-after-page overflow-hidden" style={{ width: '210mm', height: '297mm' }}>
-                        {/* Background Image (Original Page) */}
-                        <img
-                            src={page.backgroundImage}
-                            className="absolute inset-0 w-full h-full object-contain pointer-events-none opacity-100"
-                            alt={`Page ${page.pageNumber}`}
-                        />
+                    <div key={i} className="paper-sheet-container transform hover:scale-[1.01] transition-transform duration-500" style={{ width: '210mm', height: '297mm' }}>
+                        <PaperSheet>
+                            {/* We are NOT rendering the original background image as a full background anymore.
+                                Instead, we render the 'text_regions' as handwriting and 'image_regions' as clips.
+                            */}
 
-                        {/* Overlay Text Regions */}
-                        <div className="absolute inset-0 w-full h-full pointer-events-none">
-                            {page.textRegions.map((region, rIdx) => (
-                                <HandwrittenBlock
-                                    key={rIdx}
-                                    text={region.text}
-                                    box={region.box}
-                                    seed={globalSeed + i * 1000 + rIdx}
-                                    style={style}
-                                />
-                            ))}
-                        </div>
+                            <div className="absolute inset-0 w-full h-full pointer-events-none">
+                                {page.regions.map((region, rIdx) => (
+                                    <HandwrittenBlock
+                                        key={rIdx}
+                                        region={region}
+                                        originalImage={page.backgroundImage}
+                                        seed={globalSeed + i * 1000 + rIdx}
+                                        style={style}
+                                    />
+                                ))}
+
+                                {/* Fallback: If no regions detected (AI error), show a warning or the original image faded?
+                                    Let's show a subtle faded original if regions are empty to prevent "blank page" panic.
+                                */}
+                                {page.regions.length === 0 && (
+                                    <div className="absolute inset-0 flex items-center justify-center opacity-50">
+                                        <p className="text-red-500 font-bold rotate-45 border-4 border-red-500 p-4 rounded-xl">NO TEXT DETECTED</p>
+                                    </div>
+                                )}
+                            </div>
+                        </PaperSheet>
                     </div>
                 ))}
             </div>
@@ -321,7 +382,7 @@ const App: React.FC = () => {
             processedPages.push({
                 pageNumber: i + 1,
                 backgroundImage: images[i],
-                textRegions: regions
+                regions: regions
             });
         }
 

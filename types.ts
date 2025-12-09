@@ -13,15 +13,16 @@ export interface BoundingBox {
   xmax: number;
 }
 
-export interface TextRegion {
-  text: string;
+export interface Region {
+  type: 'text' | 'image';
+  content: string; // Text content or description
   box: BoundingBox;
 }
 
 export interface ProcessedPage {
   pageNumber: number;
-  backgroundImage: string; // base64
-  textRegions: TextRegion[];
+  backgroundImage: string; // base64 of original page
+  regions: Region[];
 }
 
 export interface HandwritingStyle {

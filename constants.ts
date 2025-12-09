@@ -19,19 +19,26 @@ Choose the font that best matches the description.
 
 export const LAYOUT_ANALYSIS_PROMPT = `
 You are a document layout analyzer.
-Your task is to extract text from the provided image and identify the bounding boxes for each text block so they can be replaced with handwritten text.
+Your task is to extract content from the provided image so it can be reconstructed as a handwritten document.
+
+Identify two types of regions:
+1. "text_regions": Blocks of text that should be converted to handwriting.
+2. "image_regions": Diagrams, illustrations, photos, graphs, or complex equations that cannot be easily written as text. These should be preserved as images.
 
 Output a JSON object with a "regions" key, containing a list of objects.
-Each object should have:
-- "text": The exact text content of the block. Use \n for line breaks within the block.
-- "box": A bounding box object { "ymin": number, "xmin": number, "ymax": number, "xmax": number } where coordinates are normalized to 0-1000 scale (0 is top/left, 1000 is bottom/right).
+Each object must have:
+- "type": "text" or "image"
+- "content":
+    - For "text": The exact string content. Use \n for line breaks.
+    - For "image": A short description (e.g., "circuit diagram").
+- "box": A bounding box object { "ymin": number, "xmin": number, "ymax": number, "xmax": number }
+  **Coordinates must be normalized to a 0-1000 scale** (0 is top/left, 1000 is bottom/right).
 
 Guidelines:
-1. Group paragraphs or logical blocks of text together.
-2. Ignore images, diagrams, lines, and non-text elements.
-3. If there is a diagram with labels, try to extract the labels as separate small text blocks if they are distinct.
-4. The bounding box should tightly enclose the text.
-5. Do NOT include markdown formatting in the output, just raw JSON.
+- Group paragraphs together.
+- For "image" regions, the box should tightly enclose the visual element.
+- Ignore page numbers, headers, or footers if they are irrelevant to the assignment content.
+- Do NOT include markdown formatting. Return RAW JSON.
 `;
 
 export const DEFAULT_STYLE = {
