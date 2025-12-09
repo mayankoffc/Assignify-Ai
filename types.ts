@@ -1,4 +1,4 @@
-export type AppState = 'upload' | 'processing' | 'preview';
+export type AppState = 'upload' | 'processing' | 'results';
 
 export interface UploadedFile {
   name: string;
@@ -6,24 +6,32 @@ export interface UploadedFile {
   data: string;
 }
 
-export interface ExtractedPage {
-  pageNumber: number;
-  backgroundImage: string;
-  textContent: string;
+export interface BoundingBox {
+  ymin: number;
+  xmin: number;
+  ymax: number;
+  xmax: number;
 }
 
-export interface DocumentContent {
-  pages: ExtractedPage[];
-  totalPages: number;
+export interface TextRegion {
+  text: string;
+  box: BoundingBox;
+}
+
+export interface ProcessedPage {
+  pageNumber: number;
+  backgroundImage: string; // base64
+  textRegions: TextRegion[];
 }
 
 export interface HandwritingStyle {
   slant: number;
   spacing: number;
-  size: number;
-  pressure: number;
+  size: number; // multiplier
+  weight: number; // stroke width
   messiness: number;
-  fontMix: string[];
+  fontFamily: string;
+  color: string;
 }
 
 declare global {
@@ -31,5 +39,11 @@ declare global {
     interface ProcessEnv {
       API_KEY: string;
     }
+  }
+  interface Window {
+    aistudio?: {
+      hasSelectedApiKey?: () => Promise<boolean>;
+      openSelectKey?: () => Promise<void>;
+    };
   }
 }
