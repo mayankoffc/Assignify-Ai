@@ -10,9 +10,17 @@ Output ONLY valid JSON with these parameters:
   "size": 1.0,         // 0.8 to 1.2 multiplier
   "weight": 1.0,       // 0.5 (thin) to 2.0 (bold)
   "messiness": 0.3,    // 0 (neat) to 1 (messy)
-  "fontFamily": "Caveat", // "Caveat", "Cedarville Cursive", "Shadows Into Light", "Homemade Apple"
+  "fontFamily": "Caveat", // Choose one: "Caveat", "Cedarville Cursive", "Zeyada", "La Belle Aurore", "Indie Flower", "Shadows Into Light"
   "color": "#000000"   // Hex code for ink color (e.g., #0a2472 for blue, #000000 for black)
 }
+
+**Font Guide:**
+- "Caveat": Standard neat handwriting.
+- "Cedarville Cursive": Authentic, slightly messy cursive.
+- "Zeyada": Very messy, scribbly cursive.
+- "La Belle Aurore": Tall, elegant, slightly messy cursive.
+- "Indie Flower": Bubbly, neat, rounded.
+- "Shadows Into Light": Neat, upright, print-style.
 
 Choose the font that best matches the description.
 `;
