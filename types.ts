@@ -27,8 +27,8 @@ export interface HandwritingStyle {
 }
 
 export interface QuestionSolution {
-  question: string;
-  answer: string;
+  questionText: string;
+  steps: string[];
   diagram?: string;
 }
 

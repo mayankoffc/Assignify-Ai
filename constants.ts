@@ -38,27 +38,61 @@ export const AI_SYSTEM_PROMPT = `You are an expert tutor and assignment solver. 
 
 For each question in the assignment, provide:
 1. The exact question text
-2. A detailed, well-explained answer
+2. A detailed, well-explained answer broken into steps
 3. If relevant, specify a diagram type (optional)
 
 Return your response as a JSON array with this structure:
 [
   {
-    "question": "The question text",
-    "answer": "The complete solution with step-by-step explanation",
+    "questionText": "The question text",
+    "steps": ["Sol:", "Step 1 explanation...", "Step 2...", "Final answer..."],
     "diagram": "Optional: GENAI_IMAGE_[description of diagram needed]"
   }
 ]
 
+Each step should be a separate string in the steps array. Use empty strings "" for blank lines/spacing.
 Make answers thorough but concise. Use proper mathematical notation where needed. For science questions, include relevant formulas and explanations.`;
 
 export const FALLBACK_SOLUTIONS = [
   {
-    question: "Sample Question 1: What is the quadratic formula?",
-    answer: "The quadratic formula is x = (-b ± √(b² - 4ac)) / 2a\n\nThis formula is used to solve equations of the form ax² + bx + c = 0\n\nWhere:\n• a = coefficient of x²\n• b = coefficient of x\n• c = constant term\n\nThe discriminant (b² - 4ac) determines the nature of roots:\n• If > 0: Two distinct real roots\n• If = 0: One repeated real root\n• If < 0: Two complex conjugate roots"
+    questionText: "Sample Question 1: What is the quadratic formula?",
+    steps: [
+      "Sol:",
+      "The quadratic formula is used to solve equations of the form ax² + bx + c = 0",
+      "",
+      "The formula is:",
+      "x = (-b ± √(b² - 4ac)) / 2a",
+      "",
+      "Where:",
+      "• a = coefficient of x²",
+      "• b = coefficient of x",
+      "• c = constant term",
+      "",
+      "The discriminant (b² - 4ac) determines the nature of roots:",
+      "• If > 0: Two distinct real roots",
+      "• If = 0: One repeated real root",
+      "• If < 0: Two complex conjugate roots"
+    ]
   },
   {
-    question: "Sample Question 2: Explain photosynthesis",
-    answer: "Photosynthesis is the process by which plants convert light energy into chemical energy.\n\nThe overall equation:\n6CO₂ + 6H₂O + Light Energy → C₆H₁₂O₆ + 6O₂\n\nKey steps:\n1. Light-dependent reactions occur in thylakoid membranes\n2. ATP and NADPH are produced\n3. Calvin cycle fixes CO₂ into glucose\n4. Oxygen is released as a byproduct\n\nFactors affecting rate:\n• Light intensity\n• CO₂ concentration\n• Temperature"
+    questionText: "Sample Question 2: Explain photosynthesis",
+    steps: [
+      "Sol:",
+      "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+      "",
+      "The overall equation:",
+      "6CO₂ + 6H₂O + Light Energy → C₆H₁₂O₆ + 6O₂",
+      "",
+      "Key steps:",
+      "1. Light-dependent reactions occur in thylakoid membranes",
+      "2. ATP and NADPH are produced",
+      "3. Calvin cycle fixes CO₂ into glucose",
+      "4. Oxygen is released as a byproduct",
+      "",
+      "Factors affecting rate:",
+      "• Light intensity",
+      "• CO₂ concentration",
+      "• Temperature"
+    ]
   }
 ];
