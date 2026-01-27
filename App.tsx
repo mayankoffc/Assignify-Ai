@@ -7,10 +7,10 @@ import {
   RefreshCcw, Camera, Eye, PenTool, Minus, Plus, UploadCloud, FileText, Loader, 
   ArrowLeft, Sparkles, ChevronLeft, ChevronRight, Search, ZoomIn, ZoomOut, 
   Keyboard, X, Menu, User, Home, Settings, HelpCircle, FileUp, Type, 
-  Layers, CheckCircle, Clock, Zap, BarChart3, Download
+  Layers, CheckCircle, Clock, Zap, BarChart3, Download, Wand2, Image, Hash, FileDigit
 } from 'lucide-react';
-import { AppState, UploadedFile, QuestionSolution } from './types';
-import { processFileToSolutions, terminateWorker, OCRProgress } from './services/ocrService';
+import { AppState, UploadedFile, QuestionSolution, PreviewData, ExtractionStats } from './types';
+import { extractPreviewData, processPreviewToSolutions, terminateWorker, OCRProgress } from './services/ocrService';
 
 const COLORS = {
   bgDark: '#2F313A',
@@ -74,8 +74,42 @@ interface LineContext {
   marginOffset: number;
 }
 
+const NUMERIC_VARIATIONS = {
+  '0': { widthVar: 0.95, heightVar: 1.02, rotationBias: -0.3 },
+  '1': { widthVar: 0.85, heightVar: 1.05, rotationBias: 0.5 },
+  '2': { widthVar: 1.0, heightVar: 0.98, rotationBias: -0.2 },
+  '3': { widthVar: 0.98, heightVar: 1.0, rotationBias: 0.3 },
+  '4': { widthVar: 1.02, heightVar: 1.03, rotationBias: -0.4 },
+  '5': { widthVar: 0.97, heightVar: 0.99, rotationBias: 0.2 },
+  '6': { widthVar: 1.0, heightVar: 1.01, rotationBias: -0.1 },
+  '7': { widthVar: 0.93, heightVar: 1.04, rotationBias: 0.6 },
+  '8': { widthVar: 1.01, heightVar: 1.0, rotationBias: 0.0 },
+  '9': { widthVar: 0.99, heightVar: 1.02, rotationBias: -0.2 },
+};
+
+const getNumericStyle = (char: string, seed: number) => {
+  const numVar = NUMERIC_VARIATIONS[char as keyof typeof NUMERIC_VARIATIONS];
+  if (!numVar) return null;
+  
+  const personalStyle = seededRandom(seed * 7) * 0.3;
+  const fatigue = Math.sin(seed * 0.01) * 0.15;
+  
+  return {
+    scaleX: numVar.widthVar + gaussianRandom(seed, 0, 0.03) + personalStyle,
+    scaleY: numVar.heightVar + gaussianRandom(seed + 1, 0, 0.02),
+    rotation: numVar.rotationBias + gaussianRandom(seed + 2, 0, 0.8) + fatigue,
+    yDrift: gaussianRandom(seed + 3, 0, 0.4),
+    pressure: 0.9 + seededRandom(seed + 4) * 0.2,
+  };
+};
+
 const getFontForWord = (wordSeed: number, isNumber: boolean = false, isSymbol: boolean = false) => {
-  if (isNumber) return seededRandom(wordSeed) < 0.75 ? 'Caveat' : 'Shadows Into Light';
+  if (isNumber) {
+    const r = seededRandom(wordSeed);
+    if (r < 0.6) return 'Caveat';
+    if (r < 0.85) return 'Shadows Into Light';
+    return 'Cedarville Cursive';
+  }
   if (isSymbol) return 'Caveat';
   const r = seededRandom(wordSeed);
   if (r < 0.65) return 'Cedarville Cursive';
@@ -107,15 +141,19 @@ const generateCharStyle = (
   wordContext?: WordContext,
   lineContext?: LineContext
 ): CharStyle => {
+  const isNumber = /[0-9]/.test(char);
   const isMath = /[0-9=+\-×÷∝]/.test(char);
   const isPunctuation = /[.,!?;:'"]/.test(char);
+  
+  const numericStyle = isNumber ? getNumericStyle(char, seed) : null;
   
   const baselineWave = lineContext 
     ? Math.sin((wordContext?.charIndex || 0) * lineContext.lineWaveFrequency) * lineContext.lineWaveAmplitude
     : 0;
   
   const baselineDrift = gaussianRandom(seed + 100, 0, 0.8);
-  const yOffset = baselineWave + baselineDrift + randomRange(seed + 1, -0.3, 0.3);
+  const numericYDrift = numericStyle ? numericStyle.yDrift : 0;
+  const yOffset = baselineWave + baselineDrift + numericYDrift + randomRange(seed + 1, -0.3, 0.3);
   
   const kerningVariance = gaussianRandom(seed + 200, 0, 0.5);
   const positionInWord = wordContext ? wordContext.charIndex / Math.max(wordContext.wordLength, 1) : 0.5;
@@ -123,11 +161,26 @@ const generateCharStyle = (
   
   const pressureStart = wordContext?.isFirstChar ? randomRange(seed + 300, 0.1, 0.25) : 0;
   const pressureEnd = wordContext?.isLastChar ? randomRange(seed + 301, 0.05, 0.15) : 0;
-  const pressureVariation = pressureStart + pressureEnd + gaussianRandom(seed + 302, 0, 0.08);
+  const numericPressure = numericStyle ? (numericStyle.pressure - 1) * 0.1 : 0;
+  const pressureVariation = pressureStart + pressureEnd + numericPressure + gaussianRandom(seed + 302, 0, 0.08);
   
-  const baseRotation = isMath ? randomRange(seed, -0.5, 0.5) : randomRange(seed, -1.5, 1.5);
-  const wordSlantInfluence = wordContext ? wordContext.wordSlant * 0.3 : 0;
-  const microRotation = baseRotation + wordSlantInfluence;
+  let rotation: number;
+  if (numericStyle) {
+    rotation = numericStyle.rotation;
+  } else if (isMath) {
+    rotation = randomRange(seed, -0.5, 0.5);
+  } else {
+    const baseRotation = randomRange(seed, -1.5, 1.5);
+    const wordSlantInfluence = wordContext ? wordContext.wordSlant * 0.3 : 0;
+    rotation = baseRotation + wordSlantInfluence;
+  }
+  
+  let scale: number;
+  if (numericStyle) {
+    scale = (numericStyle.scaleX + numericStyle.scaleY) / 2;
+  } else {
+    scale = randomRange(seed + 2, 0.96, 1.06);
+  }
   
   const inkPoolStart = wordContext?.isFirstChar && seededRandom(seed + 400) < 0.35;
   const inkPoolEnd = wordContext?.isLastChar && seededRandom(seed + 401) < 0.25;
@@ -142,9 +195,9 @@ const generateCharStyle = (
   const finalOpacity = baseOpacity * pressureOpacity;
   
   return {
-    rotation: microRotation,         
-    yOffset: yOffset,      
-    scale: randomRange(seed + 2, 0.96, 1.06),       
+    rotation,         
+    yOffset,      
+    scale,       
     skew: isMath ? randomRange(seed + 3, -0.5, 0.5) : (wordContext?.wordSlant || -3) + randomRange(seed + 3, -1.2, 1.2),  
     opacity: finalOpacity,     
     marginRight: kerningVariance + kerningCurve + randomRange(seed + 5, -0.3, 0.3),  
@@ -501,32 +554,22 @@ const Header: React.FC<{ onMenuClick: () => void; title: string }> = ({ onMenuCl
 
 const UploadScreen: React.FC<{ onUpload: (file: UploadedFile) => void }> = ({ onUpload }) => {
   const [dragActive, setDragActive] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<{ name: string; size: number; type: string } | null>(null);
-  const [isScanning, setIsScanning] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-
-  const formatFileSize = (bytes: number): string => {
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-  };
 
   const handleFiles = (files: FileList | null) => {
     if (files && files[0]) {
       const file = files[0];
-      setSelectedFile({ name: file.name, size: file.size, type: file.type });
-      setIsScanning(true);
+      setIsLoading(true);
       
-      setTimeout(() => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          if (e.target?.result) {
-            onUpload({ name: file.name, type: file.type, data: e.target.result as string });
-          }
-        };
-        reader.readAsDataURL(file);
-      }, 1500);
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        if (e.target?.result) {
+          onUpload({ name: file.name, type: file.type, data: e.target.result as string });
+        }
+      };
+      reader.readAsDataURL(file);
     }
   };
 
@@ -555,35 +598,20 @@ const UploadScreen: React.FC<{ onUpload: (file: UploadedFile) => void }> = ({ on
                 onDragLeave={() => setDragActive(false)}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => { e.preventDefault(); setDragActive(false); handleFiles(e.dataTransfer.files); }}
-                onClick={() => !selectedFile && inputRef.current?.click()}
+                onClick={() => !isLoading && inputRef.current?.click()}
                 className={`border-2 border-dashed rounded-2xl h-64 flex flex-col items-center justify-center cursor-pointer transition-all duration-300 relative overflow-hidden`}
                 style={{ 
                   borderColor: dragActive ? COLORS.primaryGreen : COLORS.border,
                   backgroundColor: dragActive ? `${COLORS.primaryGreen}10` : COLORS.bgDark,
                 }}
               >
-                {isScanning && (
-                  <div className="absolute inset-0 overflow-hidden">
-                    <div className="absolute top-0 left-0 right-0 h-1 animate-pulse" style={{ backgroundColor: COLORS.primaryGreen }} />
-                  </div>
-                )}
-                
-                {selectedFile ? (
+                {isLoading ? (
                   <div className="text-center z-10">
-                    <div className="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center" style={{ backgroundColor: `${COLORS.primaryGreen}20` }}>
-                      <FileText size={32} style={{ color: COLORS.primaryGreen }} />
+                    <div className="w-20 h-20 rounded-2xl mx-auto mb-4 flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${COLORS.primaryGreen}, ${COLORS.accentBlue})` }}>
+                      <Loader className="animate-spin text-white" size={40} />
                     </div>
-                    <p className="text-lg font-semibold" style={{ color: COLORS.textPrimary }}>{selectedFile.name}</p>
-                    <div className="flex gap-4 justify-center mt-2 text-sm" style={{ color: COLORS.textSecondary }}>
-                      <span>{formatFileSize(selectedFile.size)}</span>
-                      <span>{selectedFile.type.split('/')[1]?.toUpperCase() || 'UNKNOWN'}</span>
-                    </div>
-                    {isScanning && (
-                      <p className="mt-4 flex items-center justify-center gap-2" style={{ color: COLORS.primaryGreen }}>
-                        <Loader className="animate-spin" size={16} />
-                        Preparing document...
-                      </p>
-                    )}
+                    <p className="text-lg font-medium mb-2" style={{ color: COLORS.textPrimary }}>Loading Document...</p>
+                    <p className="text-sm" style={{ color: COLORS.textSecondary }}>Please wait</p>
                   </div>
                 ) : (
                   <div className="text-center z-10">
@@ -629,47 +657,237 @@ const UploadScreen: React.FC<{ onUpload: (file: UploadedFile) => void }> = ({ on
   );
 };
 
-const ProcessingScreen: React.FC<{ file: UploadedFile | null, onComplete: (solutions: QuestionSolution[]) => void }> = ({ file, onComplete }) => {
+const PreviewScreen: React.FC<{ 
+  file: UploadedFile; 
+  onConvert: (preview: PreviewData) => void;
+  onBack: () => void;
+}> = ({ file, onConvert, onBack }) => {
+  const [previewData, setPreviewData] = useState<PreviewData | null>(null);
+  const [isExtracting, setIsExtracting] = useState(true);
+  const [extractProgress, setExtractProgress] = useState(0);
+  const [extractStatus, setExtractStatus] = useState('Loading document...');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    const extract = async () => {
+      try {
+        const data = await extractPreviewData(file.data, file.type, (p) => {
+          setExtractProgress(p.progress);
+          setExtractStatus(p.status);
+        });
+        setPreviewData(data);
+        setIsExtracting(false);
+      } catch (e) {
+        console.error('Extraction failed:', e);
+        setExtractStatus('Extraction failed - using fallback');
+        setPreviewData({
+          thumbnail: '',
+          extractedText: ['Document content could not be fully extracted'],
+          stats: { totalCharacters: 0, totalWords: 0, totalNumbers: 0, totalLines: 0, totalPages: 1, extractedImages: [] },
+          rawPages: ['Document content']
+        });
+        setIsExtracting(false);
+      }
+    };
+    extract();
+  }, [file]);
+
+  const formatNumber = (n: number) => n.toLocaleString();
+
+  return (
+    <div className="flex min-h-screen" style={{ backgroundColor: COLORS.bgDark }}>
+      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} currentTool="handwriting" onToolChange={() => {}} />
+      
+      <div className="flex-1 flex flex-col">
+        <Header onMenuClick={() => setSidebarOpen(true)} title="Document Preview" />
+        
+        <main className="flex-1 p-6 overflow-auto">
+          <div className="max-w-5xl mx-auto space-y-6">
+            <button onClick={onBack} className="flex items-center gap-2 px-4 py-2 rounded-xl transition-all" style={{ backgroundColor: COLORS.bgCard, color: COLORS.textSecondary }}>
+              <ArrowLeft size={18} /> Back to Upload
+            </button>
+
+            {isExtracting ? (
+              <div className="rounded-2xl p-8" style={{ backgroundColor: COLORS.bgCard }}>
+                <div className="text-center">
+                  <div className="w-24 h-24 rounded-2xl mx-auto mb-6 flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${COLORS.primaryGreen}, ${COLORS.accentBlue})` }}>
+                    <Loader className="animate-spin text-white" size={48} />
+                  </div>
+                  <h3 className="text-2xl font-bold mb-2" style={{ color: COLORS.textPrimary }}>Extracting Content</h3>
+                  <p className="mb-6" style={{ color: COLORS.textSecondary }}>{extractStatus}</p>
+                  
+                  <div className="max-w-md mx-auto">
+                    <div className="flex justify-between text-sm mb-2">
+                      <span style={{ color: COLORS.textSecondary }}>Progress</span>
+                      <span className="font-bold" style={{ color: COLORS.primaryGreen }}>{extractProgress}%</span>
+                    </div>
+                    <div className="h-3 rounded-full overflow-hidden" style={{ backgroundColor: COLORS.bgDark }}>
+                      <div 
+                        className="h-full transition-all duration-300 rounded-full"
+                        style={{ width: `${extractProgress}%`, background: `linear-gradient(90deg, ${COLORS.primaryGreen}, ${COLORS.accentBlue})` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : previewData && (
+              <>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  <div className="rounded-2xl p-6 flex flex-col items-center" style={{ backgroundColor: COLORS.bgCard }}>
+                    <h4 className="text-sm font-medium mb-4" style={{ color: COLORS.textSecondary }}>Document Preview</h4>
+                    {previewData.thumbnail ? (
+                      <img 
+                        src={previewData.thumbnail} 
+                        alt="Document preview" 
+                        className="w-full max-w-[200px] rounded-xl border-2 shadow-lg"
+                        style={{ borderColor: COLORS.border }}
+                      />
+                    ) : (
+                      <div className="w-full max-w-[200px] h-[280px] rounded-xl flex items-center justify-center" style={{ backgroundColor: COLORS.bgDark }}>
+                        <FileText size={48} style={{ color: COLORS.textSecondary }} />
+                      </div>
+                    )}
+                    <p className="mt-4 text-sm font-medium truncate max-w-full" style={{ color: COLORS.textPrimary }}>{file.name}</p>
+                  </div>
+
+                  <div className="lg:col-span-2 rounded-2xl p-6" style={{ backgroundColor: COLORS.bgCard }}>
+                    <h4 className="text-sm font-medium mb-4" style={{ color: COLORS.textSecondary }}>Extraction Statistics</h4>
+                    
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                      {[
+                        { icon: Type, label: 'Characters', value: formatNumber(previewData.stats.totalCharacters), color: COLORS.primaryGreen },
+                        { icon: FileText, label: 'Words', value: formatNumber(previewData.stats.totalWords), color: COLORS.accentBlue },
+                        { icon: Hash, label: 'Numbers', value: formatNumber(previewData.stats.totalNumbers), color: '#F59E0B' },
+                        { icon: Layers, label: 'Pages', value: String(previewData.stats.totalPages), color: '#EC4899' },
+                      ].map((stat, i) => (
+                        <div key={i} className="p-4 rounded-xl text-center" style={{ backgroundColor: COLORS.bgDark }}>
+                          <stat.icon size={20} className="mx-auto mb-2" style={{ color: stat.color }} />
+                          <p className="text-2xl font-bold" style={{ color: COLORS.textPrimary }}>{stat.value}</p>
+                          <p className="text-xs" style={{ color: COLORS.textSecondary }}>{stat.label}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    {previewData.stats.extractedImages.length > 0 && (
+                      <div className="mb-4">
+                        <div className="flex items-center gap-2 mb-3">
+                          <Image size={16} style={{ color: COLORS.primaryGreen }} />
+                          <span className="text-sm font-medium" style={{ color: COLORS.textSecondary }}>
+                            {previewData.stats.extractedImages.length} Image{previewData.stats.extractedImages.length > 1 ? 's' : ''} Detected
+                          </span>
+                        </div>
+                        <div className="flex gap-2 overflow-x-auto pb-2">
+                          {previewData.stats.extractedImages.slice(0, 5).map((img, i) => (
+                            <img 
+                              key={i} 
+                              src={img.dataUrl} 
+                              alt={`Extracted ${i + 1}`}
+                              className="h-16 w-16 object-cover rounded-lg border"
+                              style={{ borderColor: COLORS.border }}
+                            />
+                          ))}
+                          {previewData.stats.extractedImages.length > 5 && (
+                            <div className="h-16 w-16 rounded-lg flex items-center justify-center" style={{ backgroundColor: COLORS.bgDark }}>
+                              <span className="text-sm font-medium" style={{ color: COLORS.textSecondary }}>
+                                +{previewData.stats.extractedImages.length - 5}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl p-6" style={{ backgroundColor: COLORS.bgCard }}>
+                  <h4 className="text-sm font-medium mb-4" style={{ color: COLORS.textSecondary }}>Extracted Text Preview</h4>
+                  <div 
+                    className="p-4 rounded-xl max-h-48 overflow-y-auto text-sm leading-relaxed font-mono"
+                    style={{ backgroundColor: COLORS.bgDark, color: COLORS.textSecondary }}
+                  >
+                    {previewData.extractedText.slice(0, 3).map((text, i) => (
+                      <p key={i} className="mb-2">{text.substring(0, 500)}{text.length > 500 ? '...' : ''}</p>
+                    ))}
+                    {previewData.extractedText.length > 3 && (
+                      <p className="italic">... and {previewData.extractedText.length - 3} more pages</p>
+                    )}
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => onConvert(previewData)}
+                  className="w-full py-5 rounded-2xl flex items-center justify-center gap-3 text-xl font-bold text-white transition-all hover:scale-[1.02] active:scale-[0.98] shadow-xl"
+                  style={{ 
+                    background: `linear-gradient(135deg, ${COLORS.primaryGreen}, ${COLORS.accentBlue})`,
+                    boxShadow: `0 10px 40px ${COLORS.primaryGreen}40`
+                  }}
+                >
+                  <Wand2 size={28} />
+                  Magic Convert to Handwriting
+                </button>
+              </>
+            )}
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+};
+
+const ProcessingScreen: React.FC<{ 
+  previewData: PreviewData | null;
+  fileName: string;
+  onComplete: (solutions: QuestionSolution[]) => void 
+}> = ({ previewData, fileName, onComplete }) => {
   const [progress, setProgress] = useState(0);
   const [currentStatus, setCurrentStatus] = useState('Initializing');
   const [stats, setStats] = useState({ letters: 0, speed: 0, pages: 0 });
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
-    if (!file) return;
+    if (!previewData) return;
 
-    const handleProgress = (ocrProgress: OCRProgress) => {
-      setProgress(ocrProgress.progress);
-      setCurrentStatus(ocrProgress.status);
-      setStats(prev => ({ 
-        ...prev, 
-        letters: Math.floor(ocrProgress.progress * 50),
-        speed: Math.floor(Math.random() * 200) + 100,
-      }));
-    };
-
-    const processFile = async () => {
+    const processData = async () => {
+      const totalChars = previewData.stats.totalCharacters;
+      const charsPerTick = Math.max(50, Math.floor(totalChars / 30));
+      let currentLetters = 0;
+      
       setProgress(5);
-      setCurrentStatus('Loading document');
-      await new Promise(r => setTimeout(r, 500));
+      setCurrentStatus('Analyzing structure');
+      await new Promise(r => setTimeout(r, 400));
       
-      setProgress(15);
-      setCurrentStatus('Initializing OCR engine');
-      await new Promise(r => setTimeout(r, 500));
+      setProgress(20);
+      setCurrentStatus('Rendering handwriting');
       
-      setProgress(25);
-      setCurrentStatus('Extracting text');
+      const interval = setInterval(() => {
+        currentLetters = Math.min(currentLetters + charsPerTick, totalChars);
+        const speed = 150 + Math.floor(Math.random() * 100);
+        setStats({ 
+          letters: currentLetters, 
+          speed, 
+          pages: Math.ceil(currentLetters / 3000) 
+        });
+      }, 100);
       
       try {
-        const solutions = await processFileToSolutions(file.data, file.type, handleProgress);
+        setProgress(40);
+        setCurrentStatus('Converting to handwriting');
+        
+        const solutions = await processPreviewToSolutions(previewData, (p) => {
+          setProgress(40 + Math.floor(p.progress * 0.4));
+          setCurrentStatus(p.status);
+        });
         setStats(prev => ({ ...prev, pages: solutions.length }));
         
+        clearInterval(interval);
+        setStats(prev => ({ ...prev, letters: totalChars, pages: solutions.length }));
+        
         setProgress(85);
-        setCurrentStatus('Rendering handwriting');
+        setCurrentStatus('Finalizing pages');
         await new Promise(r => setTimeout(r, 400));
         
         setProgress(95);
-        setCurrentStatus('Finalizing');
+        setCurrentStatus('Applying ink effects');
         await new Promise(r => setTimeout(r, 400));
         
         setProgress(100);
@@ -677,14 +895,15 @@ const ProcessingScreen: React.FC<{ file: UploadedFile | null, onComplete: (solut
         
         setTimeout(() => onComplete(solutions), 500);
       } catch (e) {
+        clearInterval(interval);
         setCurrentStatus('Using fallback mode');
         setTimeout(() => onComplete(FALLBACK_SOLUTIONS), 1000);
       }
     };
     
-    const t = setTimeout(processFile, 300);
+    const t = setTimeout(processData, 300);
     return () => clearTimeout(t);
-  }, [file, onComplete]);
+  }, [previewData, onComplete]);
 
   const stages = [
     { label: 'Text Extraction', icon: FileText, done: progress > 30 },
@@ -707,7 +926,7 @@ const ProcessingScreen: React.FC<{ file: UploadedFile | null, onComplete: (solut
                   <Loader className="animate-spin text-white" size={40} />
                 </div>
                 <h3 className="text-2xl font-bold mb-2" style={{ color: COLORS.textPrimary }}>Converting to Handwriting</h3>
-                <p style={{ color: COLORS.textSecondary }}>{file?.name}</p>
+                <p style={{ color: COLORS.textSecondary }}>{fileName}</p>
               </div>
 
               <div className="space-y-4 mb-8">
@@ -1026,6 +1245,7 @@ const ResultsScreen: React.FC<{ solutions: QuestionSolution[], onReset: () => vo
 const App: React.FC = () => {
   const [appState, setAppState] = useState<AppState>('upload');
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null);
+  const [previewData, setPreviewData] = useState<PreviewData | null>(null);
   const [solutions, setSolutions] = useState<QuestionSolution[]>([]);
   const [isClient, setIsClient] = useState(false);
 
@@ -1041,18 +1261,36 @@ const App: React.FC = () => {
       {appState === 'upload' && (
         <UploadScreen onUpload={(file) => {
           setUploadedFile(file);
-          setAppState('processing');
+          setAppState('preview');
         }} />
       )}
+      {appState === 'preview' && uploadedFile && (
+        <PreviewScreen 
+          file={uploadedFile} 
+          onConvert={(preview) => {
+            setPreviewData(preview);
+            setAppState('processing');
+          }}
+          onBack={() => {
+            setUploadedFile(null);
+            setAppState('upload');
+          }}
+        />
+      )}
       {appState === 'processing' && (
-        <ProcessingScreen file={uploadedFile} onComplete={(sols) => {
-          setSolutions(sols);
-          setAppState('results');
-        }} />
+        <ProcessingScreen 
+          previewData={previewData} 
+          fileName={uploadedFile?.name || 'Document'}
+          onComplete={(sols) => {
+            setSolutions(sols);
+            setAppState('results');
+          }} 
+        />
       )}
       {appState === 'results' && (
         <ResultsScreen solutions={solutions} onReset={() => {
           setUploadedFile(null);
+          setPreviewData(null);
           setSolutions([]);
           setAppState('upload');
         }} />

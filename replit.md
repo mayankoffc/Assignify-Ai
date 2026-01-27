@@ -70,6 +70,30 @@ The app uses a sophisticated handwriting simulation:
   - Processing screen with live stats (letters/sec, pages, progress stages)
   - Results screen with professional toolbar (search, zoom, export)
 
+- **New Preview Screen with Magic Convert**
+  - Shows document thumbnail preview after upload
+  - Displays extraction statistics:
+    - Total characters extracted
+    - Total words extracted
+    - Total numbers detected
+    - Total pages
+    - Extracted images list
+  - "Magic Convert" button to trigger handwriting conversion
+  - Back button to return to upload
+
+- **Improved Numerical Handwriting Algorithm**
+  - Per-digit style variations for natural number rendering
+  - Gaussian distribution for micro-variations
+  - Fatigue simulation for longer sequences
+  - Pressure variation per digit
+  - Personal style consistency within numbers
+
+- **Enhanced OCR & Extraction**
+  - PDF.js native text extraction (faster, more accurate)
+  - Fallback to Tesseract.js OCR when native extraction fails
+  - Image extraction from PDF pages
+  - Progress callbacks for all extraction stages
+
 - **Enhanced Handwriting Engine**
   - Gaussian distribution for natural variations
   - Word-level context awareness
