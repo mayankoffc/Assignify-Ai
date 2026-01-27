@@ -26,6 +26,12 @@ export interface HandwritingStyle {
   fontMix: string[];
 }
 
+export interface QuestionSolution {
+  question: string;
+  answer: string;
+  diagram?: string;
+}
+
 declare global {
   namespace NodeJS {
     interface ProcessEnv {

@@ -50,7 +50,13 @@ The app uses a sophisticated handwriting simulation:
 - HMR configured for Replit environment
 - AllowedHosts: true (for proxy compatibility)
 
-## Recent Changes (December 7, 2025)
+## Recent Changes (January 27, 2026)
+- Updated lucide-react to ^0.460.0 for React 19 compatibility
+- Added missing QuestionSolution type to types.ts
+- Added AI_SYSTEM_PROMPT and FALLBACK_SOLUTIONS exports to constants.ts
+- Configured deployment for static hosting
+
+## Previous Changes (December 7, 2025)
 - Converted from Physics-specific solver to Universal TMA Solver (Assignify)
 - Updated AI prompt to support all subjects
 - Changed model from gemini-2.5-flash to gemini-2.5-flash with universal prompts
