@@ -131,6 +131,13 @@ const randomRange = (seed: number, min: number, max: number) => {
   return min + seededRandom(seed) * (max - min);
 };
 
+const gaussianRandom = (seed: number, mean: number = 0, stdDev: number = 1) => {
+  const u1 = seededRandom(seed);
+  const u2 = seededRandom(seed + 1);
+  const z = Math.sqrt(-2 * Math.log(u1 + 0.001)) * Math.cos(2 * Math.PI * u2);
+  return mean + z * stdDev;
+};
+
 interface CharStyle {
   rotation: number;     
   yOffset: number;      
@@ -140,12 +147,60 @@ interface CharStyle {
   marginRight: number;
   strokeWidth: number;
   fontFamily: string;
+  inkPoolStart: boolean;
+  inkPoolEnd: boolean;
+  inkBlob: boolean;
+  letterConnect: boolean;
+  pressureVariation: number;
 }
 
-const getFontForType = (char: string, seed: number) => {
+interface WordContext {
+  wordSeed: number;
+  wordFont: string;
+  wordSlant: number;
+  charIndex: number;
+  wordLength: number;
+  isFirstChar: boolean;
+  isLastChar: boolean;
+}
+
+interface LineContext {
+  lineSeed: number;
+  lineWaveAmplitude: number;
+  lineWaveFrequency: number;
+  lineHeightVariation: number;
+  marginOffset: number;
+}
+
+const getFontForWord = (wordSeed: number, isNumber: boolean = false, isSymbol: boolean = false) => {
+  if (isNumber) {
+    return seededRandom(wordSeed) < 0.75 ? 'Caveat' : 'Shadows Into Light';
+  }
+  if (isSymbol) {
+    return 'Caveat';
+  }
+  const r = seededRandom(wordSeed);
+  if (r < 0.65) return 'Cedarville Cursive';
+  if (r < 0.90) return 'Caveat';
+  return 'Shadows Into Light';
+};
+
+const getFontForType = (char: string, seed: number, wordContext?: WordContext) => {
   const isNumber = /[0-9]/.test(char);
-  const isSymbol = /[=+\-×÷∝]/.test(char);
+  const isSymbol = /[=+\-×÷∝()[\]{}]/.test(char);
   
+  if (wordContext) {
+    if (isNumber) {
+      return seededRandom(seed) < 0.85 ? wordContext.wordFont : 'Caveat';
+    }
+    if (isSymbol) {
+      return 'Caveat';
+    }
+    if (seededRandom(seed) < 0.92) {
+      return wordContext.wordFont;
+    }
+  }
+
   if (isNumber || isSymbol) {
     const r = seededRandom(seed);
     if (r < 0.6) return 'Caveat'; 
@@ -157,48 +212,159 @@ const getFontForType = (char: string, seed: number) => {
   return 'Caveat'; 
 };
 
-const generateCharStyle = (char: string, seed: number, baseThickness: number): CharStyle => {
+const generateCharStyle = (
+  char: string, 
+  seed: number, 
+  baseThickness: number,
+  wordContext?: WordContext,
+  lineContext?: LineContext
+): CharStyle => {
   const isMath = /[0-9=+\-×÷∝]/.test(char);
+  const isPunctuation = /[.,!?;:'"]/.test(char);
+  
+  const baselineWave = lineContext 
+    ? Math.sin((wordContext?.charIndex || 0) * lineContext.lineWaveFrequency) * lineContext.lineWaveAmplitude
+    : 0;
+  
+  const baselineDrift = gaussianRandom(seed + 100, 0, 0.8);
+  const yOffset = baselineWave + baselineDrift + randomRange(seed + 1, -0.3, 0.3);
+  
+  const kerningVariance = gaussianRandom(seed + 200, 0, 0.5);
+  const positionInWord = wordContext ? wordContext.charIndex / Math.max(wordContext.wordLength, 1) : 0.5;
+  const kerningCurve = Math.sin(positionInWord * Math.PI) * 0.3;
+  
+  const pressureStart = wordContext?.isFirstChar ? randomRange(seed + 300, 0.1, 0.25) : 0;
+  const pressureEnd = wordContext?.isLastChar ? randomRange(seed + 301, 0.05, 0.15) : 0;
+  const pressureVariation = pressureStart + pressureEnd + gaussianRandom(seed + 302, 0, 0.08);
+  
+  const baseRotation = isMath ? randomRange(seed, -0.5, 0.5) : randomRange(seed, -1.5, 1.5);
+  const wordSlantInfluence = wordContext ? wordContext.wordSlant * 0.3 : 0;
+  const microRotation = baseRotation + wordSlantInfluence;
+  
+  const inkPoolStart = wordContext?.isFirstChar && seededRandom(seed + 400) < 0.35;
+  const inkPoolEnd = wordContext?.isLastChar && seededRandom(seed + 401) < 0.25;
+  const inkBlob = seededRandom(seed + 402) < 0.03;
+  
+  const letterConnect = !isPunctuation && !isMath && 
+    wordContext && !wordContext.isLastChar && 
+    seededRandom(seed + 500) < 0.15;
+  
+  const baseOpacity = randomRange(seed + 4, 0.85, 0.98);
+  const pressureOpacity = 1 - Math.abs(pressureVariation) * 0.3;
+  const finalOpacity = baseOpacity * pressureOpacity;
+  
   return {
-    rotation: randomRange(seed, -0.8, 0.8),         
-    yOffset: randomRange(seed + 1, -0.15, 0.15),      
-    scale: randomRange(seed + 2, 0.98, 1.04),       
-    skew: isMath ? randomRange(seed + 3, -0.5, 0.5) : -3 + randomRange(seed + 3, -1, 1),  
-    opacity: randomRange(seed + 4, 0.88, 0.99),     
-    marginRight: randomRange(seed + 5, -0.2, 0.2),  
-    strokeWidth: baseThickness + randomRange(seed + 6, -0.05, 0.05),     
-    fontFamily: getFontForType(char, seed + 7),
+    rotation: microRotation,         
+    yOffset: yOffset,      
+    scale: randomRange(seed + 2, 0.96, 1.06),       
+    skew: isMath ? randomRange(seed + 3, -0.5, 0.5) : (wordContext?.wordSlant || -3) + randomRange(seed + 3, -1.2, 1.2),  
+    opacity: finalOpacity,     
+    marginRight: kerningVariance + kerningCurve + randomRange(seed + 5, -0.3, 0.3),  
+    strokeWidth: baseThickness + pressureVariation + randomRange(seed + 6, -0.08, 0.08),     
+    fontFamily: getFontForType(char, seed + 7, wordContext),
+    inkPoolStart,
+    inkPoolEnd,
+    inkBlob,
+    letterConnect,
+    pressureVariation,
   };
 };
 
-const HandwrittenChar: React.FC<{ char: string; seed: number; isMath?: boolean; thickness: number; delayIndex: number }> = ({ char, seed, isMath = false, thickness, delayIndex }) => {
-  const style = useMemo(() => generateCharStyle(char, seed, thickness), [char, seed, thickness]);
+const generateWordContext = (wordSeed: number, wordLength: number): Omit<WordContext, 'charIndex' | 'isFirstChar' | 'isLastChar'> => {
+  const hasNumbers = false;
+  const wordFont = getFontForWord(wordSeed, hasNumbers);
+  const wordSlant = -3 + gaussianRandom(wordSeed + 50, 0, 1.5);
   
-  if (char === ' ') return <span className="inline-block w-2"></span>;
+  return {
+    wordSeed,
+    wordFont,
+    wordSlant,
+    wordLength,
+  };
+};
+
+const generateLineContext = (lineSeed: number): LineContext => {
+  return {
+    lineSeed,
+    lineWaveAmplitude: randomRange(lineSeed, 0.2, 0.8),
+    lineWaveFrequency: randomRange(lineSeed + 1, 0.1, 0.25),
+    lineHeightVariation: randomRange(lineSeed + 2, -2, 2),
+    marginOffset: randomRange(lineSeed + 3, -3, 3),
+  };
+};
+
+interface HandwrittenCharProps {
+  char: string;
+  seed: number;
+  isMath?: boolean;
+  thickness: number;
+  delayIndex: number;
+  wordContext?: WordContext;
+  lineContext?: LineContext;
+}
+
+const HandwrittenChar: React.FC<HandwrittenCharProps> = ({ 
+  char, 
+  seed, 
+  isMath = false, 
+  thickness, 
+  delayIndex,
+  wordContext,
+  lineContext
+}) => {
+  const style = useMemo(() => generateCharStyle(char, seed, thickness, wordContext, lineContext), [char, seed, thickness, wordContext, lineContext]);
+  
+  if (char === ' ') {
+    const spaceVariation = wordContext ? randomRange(seed, 0.7, 1.3) : 1;
+    return <span className="inline-block" style={{ width: `${0.5 * spaceVariation}em` }}></span>;
+  }
 
   const delay = delayIndex * 25;
+  
+  const inkPoolShadow = style.inkPoolStart 
+    ? `0 0 2px rgba(10, 36, 114, 0.4), -1px 0 1px rgba(10, 36, 114, 0.3)`
+    : style.inkPoolEnd 
+    ? `1px 0 1px rgba(10, 36, 114, 0.3), 0 0 2px rgba(10, 36, 114, 0.3)`
+    : '';
+  
+  const strokeShadow = style.strokeWidth > 0.5 
+    ? `0.1px 0 0 rgba(10, 36, 114, ${style.strokeWidth * 0.8}), -0.1px 0 0 rgba(10, 36, 114, ${style.strokeWidth * 0.8})`
+    : '';
+  
+  const blobShadow = style.inkBlob 
+    ? `, 0 1px 2px rgba(10, 36, 114, 0.5)`
+    : '';
+  
+  const combinedShadow = [inkPoolShadow, strokeShadow, blobShadow].filter(Boolean).join(', ') || 'none';
+  
+  const connectStyle = style.letterConnect ? {
+    marginRight: '-1px',
+    paddingRight: '1px',
+    background: 'linear-gradient(90deg, transparent 80%, rgba(10, 36, 114, 0.15) 100%)',
+    backgroundClip: 'text',
+  } : {};
+
+  const baseStyle: React.CSSProperties = {
+    marginRight: `${style.marginRight}px`,
+    fontFamily: style.fontFamily,
+    fontWeight: isMath || style.strokeWidth > 0.6 ? 500 : 400,
+    color: '#0a2472', 
+    fontSize: isMath ? '1.1em' : '1em',
+    filter: `contrast(1.2) brightness(${0.88 + style.pressureVariation * 0.1})`,
+    textShadow: combinedShadow,
+    transform: `translateY(${style.yOffset}px) rotate(${style.rotation}deg) scale(${style.scale}) skewX(${style.skew}deg)`,
+    animation: `writeIn 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards`,
+    animationDelay: `${delay}ms`,
+    opacity: 0,
+  };
 
   return (
     <span 
       className="inline-block relative select-none"
       style={{
-        '--target-opacity': style.opacity,
-        '--target-y': `${style.yOffset}px`,
-        '--target-scale': style.scale,
-        '--target-rot': `${style.rotation}deg`,
-        marginRight: `${style.marginRight}px`,
-        fontFamily: style.fontFamily,
-        fontWeight: isMath || style.strokeWidth > 0.6 ? 500 : 400,
-        color: '#0a2472', 
-        fontSize: isMath ? '1.1em' : '1em',
-        filter: 'contrast(1.2) brightness(0.9)',
-        textShadow: style.strokeWidth > 0.5 
-          ? `0.1px 0 0 rgba(10, 36, 114, ${style.strokeWidth * 0.8}), -0.1px 0 0 rgba(10, 36, 114, ${style.strokeWidth * 0.8})` 
-          : 'none',
-        animation: `writeIn 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards`,
-        animationDelay: `${delay}ms`,
-        opacity: 0,
-      } as React.CSSProperties}
+        ...baseStyle,
+        ...connectStyle,
+      }}
     >
       {char}
     </span>
@@ -332,7 +498,54 @@ const HandwrittenSqrt: React.FC<{ content: string; seed: number; thickness: numb
   );
 };
 
-const HandwrittenLineParser: React.FC<{ text: string; seed: number; thickness: number; globalDelayOffset: number }> = ({ text, seed, thickness, globalDelayOffset }) => {
+interface HandwrittenWordProps {
+  word: string;
+  seed: number;
+  thickness: number;
+  delayOffset: number;
+  lineContext: LineContext;
+  wordIndex: number;
+}
+
+const HandwrittenWord: React.FC<HandwrittenWordProps> = ({ word, seed, thickness, delayOffset, lineContext, wordIndex }) => {
+  const wordContextBase = useMemo(() => generateWordContext(seed, word.length), [seed, word.length]);
+  
+  const wordSpaceVariation = randomRange(seed + 1000, 0.8, 1.4);
+  
+  return (
+    <span 
+      className="inline-block whitespace-nowrap"
+      style={{ 
+        marginRight: `${0.5 * wordSpaceVariation}em`,
+        transform: `translateY(${lineContext.lineHeightVariation * 0.3}px)`,
+      }}
+    >
+      {word.split('').map((char, j) => {
+        const wordContext: WordContext = {
+          ...wordContextBase,
+          charIndex: j,
+          isFirstChar: j === 0,
+          isLastChar: j === word.length - 1,
+        };
+        return (
+          <HandwrittenChar 
+            key={j} 
+            char={char} 
+            seed={seed + wordIndex * 100 + j} 
+            thickness={thickness} 
+            delayIndex={delayOffset + j}
+            wordContext={wordContext}
+            lineContext={lineContext}
+          />
+        );
+      })}
+    </span>
+  );
+};
+
+const HandwrittenLineParser: React.FC<{ text: string; seed: number; thickness: number; globalDelayOffset: number; lineIndex?: number }> = ({ text, seed, thickness, globalDelayOffset, lineIndex = 0 }) => {
+  const lineContext = useMemo(() => generateLineContext(seed + lineIndex * 1000), [seed, lineIndex]);
+  
   const diagramMatch = text.trim().match(/^DIAGRAM\[(.*?)\]$/);
 
   if (diagramMatch) {
@@ -353,9 +566,16 @@ const HandwrittenLineParser: React.FC<{ text: string; seed: number; thickness: n
   if (lastIndex < text.length) parts.push({ type: 'text', content: text.substring(lastIndex) });
 
   let charCounter = 0;
+  let wordCounter = 0;
 
   return (
-    <div className="flex flex-wrap items-baseline leading-[2.6rem]">
+    <div 
+      className="flex flex-wrap items-baseline leading-[2.6rem]"
+      style={{
+        marginLeft: `${lineContext.marginOffset}px`,
+        transform: `translateY(${lineContext.lineHeightVariation}px)`,
+      }}
+    >
       {parts.map((part, index) => {
         const partSeed = seed + index * 50;
         const currentDelay = globalDelayOffset + charCounter;
@@ -376,14 +596,18 @@ const HandwrittenLineParser: React.FC<{ text: string; seed: number; thickness: n
             return <HandwrittenStrike key={index} content={part.content!} seed={partSeed} thickness={thickness} delayIndex={currentDelay} />;
         }
         
-        const words = part.content!.split(' ');
+        const words = part.content!.split(' ').filter(w => w.length > 0);
         return words.map((word, i) => {
             const wordEl = (
-               <span key={`${index}-${i}`} className="mr-2 inline-block whitespace-nowrap">
-                {word.split('').map((char, j) => {
-                    return <HandwrittenChar key={j} char={char} seed={partSeed + i * 20 + j} thickness={thickness} delayIndex={globalDelayOffset + charCounter + j} />
-                })}
-               </span>
+               <HandwrittenWord
+                 key={`${index}-${i}`}
+                 word={word}
+                 seed={partSeed + i * 20}
+                 thickness={thickness}
+                 delayOffset={globalDelayOffset + charCounter}
+                 lineContext={lineContext}
+                 wordIndex={wordCounter++}
+               />
             );
             charCounter += word.length + 1;
             return wordEl;
@@ -1004,7 +1228,8 @@ const ResultsScreen: React.FC<{ solutions: QuestionSolution[], onReset: () => vo
                         text={sol.questionText} 
                         seed={solutionSeed} 
                         thickness={penThickness} 
-                        globalDelayOffset={charAccumulator} 
+                        globalDelayOffset={charAccumulator}
+                        lineIndex={0}
                       />
                       <span className="hidden">{charAccumulator += sol.questionText.length}</span>
                     </div>
@@ -1030,7 +1255,8 @@ const ResultsScreen: React.FC<{ solutions: QuestionSolution[], onReset: () => vo
                             text={line} 
                             seed={solutionSeed + 500 + (lineIdx * 77)} 
                             thickness={penThickness} 
-                            globalDelayOffset={charAccumulator} 
+                            globalDelayOffset={charAccumulator}
+                            lineIndex={lineIdx + 1}
                           />
                         </div>
                       );
