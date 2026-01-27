@@ -51,15 +51,35 @@ The app uses a sophisticated handwriting simulation:
 - AllowedHosts: true (for proxy compatibility)
 
 ## Recent Changes (January 27, 2026)
+- **Completely Offline Operation**
+  - Removed all external AI dependencies (Gemini, OpenAI)
+  - Implemented Tesseract.js OCR for client-side text extraction
+  - Works 100% offline after page load
+
+- **New Terminal/Hacker UI Design**
+  - Matrix rain background animation (canvas-based)
+  - Terminal boot sequence with POST check simulation
+  - Green (#0f0) on black (#000) color scheme
+  - Glitch and scan line effects
+
+- **Enhanced Handwriting Engine**
+  - Gaussian distribution for natural variations
+  - Word-level context awareness
+  - Ink pooling effects at stroke ends
+  - Baseline drift simulation
+  - Character-level kerning randomization
+
+- **Virtual Scrolling for 1000+ Pages**
+  - react-window v2 for virtualized list rendering
+  - Memoized page components
+  - Lazy loading with 3-page overscan
+  - Smooth scrolling with zoom controls
+
 - **Converted to Android App using Capacitor**
   - Added @capacitor/core, @capacitor/cli, @capacitor/android packages
   - Created Android project in /android folder
   - Configured Capacitor for HTTPS scheme and mixed content
   - App ID: com.assignify.app
-- Updated lucide-react to ^0.460.0 for React 19 compatibility
-- Added missing QuestionSolution type to types.ts
-- Added AI_SYSTEM_PROMPT and FALLBACK_SOLUTIONS exports to constants.ts
-- Configured deployment for static hosting
 
 ## Android Build Instructions
 1. Build and sync: `npm run android:sync`
