@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 
 interface PaperSheetProps {
   children: React.ReactNode;
@@ -6,21 +6,19 @@ interface PaperSheetProps {
   isScannerMode?: boolean;
 }
 
-export const PaperSheet: React.FC<PaperSheetProps> = ({ children, className = '', isScannerMode = false }) => {
+const PaperSheetComponent: React.FC<PaperSheetProps> = ({ children, className = '', isScannerMode = false }) => {
   return (
     <div className={`relative transition-all duration-500 ease-in-out ${isScannerMode ? 'p-4' : 'p-0'}`}>
       <div 
         className={`relative w-full max-w-[21cm] mx-auto overflow-hidden bg-white ${className} ${isScannerMode ? 'scanner-mode' : 'shadow-2xl'}`}
         style={{
-          minHeight: '29.7cm', // A4 height
-          // Base texture
+          minHeight: '29.7cm',
           backgroundColor: isScannerMode ? '#f0f0f0' : '#ffffff',
           filter: isScannerMode ? 'contrast(1.3) brightness(1.05) grayscale(0.1)' : 'none',
           transform: isScannerMode ? 'rotate(-0.5deg) scale(0.98)' : 'none',
           boxShadow: isScannerMode ? '5px 10px 15px rgba(0,0,0,0.3)' : '0 10px 30px rgba(0,0,0,0.5)',
         }}
       >
-        {/* --- PAPER TEXTURE (Cleaner for Topper look, Grainy for Scanner) --- */}
         {!isScannerMode && (
            <div className="absolute inset-0 opacity-20 pointer-events-none z-0"
               style={{
@@ -29,7 +27,6 @@ export const PaperSheet: React.FC<PaperSheetProps> = ({ children, className = ''
            />
         )}
         
-        {/* Scanner Dust/Noise Overlay */}
         {isScannerMode && (
             <div className="absolute inset-0 pointer-events-none z-50 opacity-40 mix-blend-multiply"
                  style={{
@@ -39,10 +36,8 @@ export const PaperSheet: React.FC<PaperSheetProps> = ({ children, className = ''
             />
         )}
 
-        {/* --- NOTEBOOK LINES LAYER --- */}
         <div className="absolute inset-0 pointer-events-none z-0"
              style={{
-               // Sharper lines for topper look
                backgroundImage: 'linear-gradient(to bottom, transparent 2.35rem, #a1aebf 2.35rem, #a1aebf 2.4rem, transparent 2.4rem)',
                backgroundSize: '100% 2.4rem', 
                backgroundPosition: '0 4rem', 
@@ -50,13 +45,10 @@ export const PaperSheet: React.FC<PaperSheetProps> = ({ children, className = ''
              }}>
         </div>
 
-        {/* --- MARGIN LINES (Red/Pink) --- */}
         <div className={`absolute top-0 bottom-0 left-[3.5rem] w-[4px] border-l border-r border-red-500/40 z-0 h-full ${isScannerMode ? 'contrast-125' : ''}`}></div>
         
-        {/* Top Header Margin */}
         <div className="absolute top-0 w-full h-[4rem] border-b-[1.5px] border-red-500/40 z-0 bg-transparent"></div>
 
-        {/* Page Info Header */}
         <div className="absolute top-4 right-8 z-10 opacity-70">
           <div className="flex flex-col gap-1 items-end">
              <div className="flex items-center gap-2">
@@ -70,17 +62,14 @@ export const PaperSheet: React.FC<PaperSheetProps> = ({ children, className = ''
           </div>
         </div>
 
-        {/* --- CONTENT CONTAINER --- */}
         <div className={`relative z-10 pl-[5rem] pr-8 pt-[4.2rem] pb-10 ${isScannerMode ? 'contrast-125' : ''}`}>
           {children}
         </div>
 
-        {/* --- SHADOW OVERLAY (Spine) - Only in clean mode --- */}
         {!isScannerMode && (
              <div className="absolute top-0 left-0 bottom-0 w-12 bg-gradient-to-r from-gray-500/10 to-transparent pointer-events-none z-20"></div>
         )}
         
-        {/* --- VIGNETTE (Scanner Effect) --- */}
         {isScannerMode && (
            <div className="absolute inset-0 pointer-events-none z-40"
              style={{
@@ -92,3 +81,5 @@ export const PaperSheet: React.FC<PaperSheetProps> = ({ children, className = ''
     </div>
   );
 };
+
+export const PaperSheet = memo(PaperSheetComponent);

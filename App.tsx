@@ -1,4 +1,6 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback, memo } from 'react';
+import { List, useListRef } from 'react-window';
+import type { CSSProperties, ComponentProps } from 'react';
 import { PaperSheet } from './components/PaperSheet';
 import { FALLBACK_SOLUTIONS } from './constants';
 import { RefreshCcw, Camera, Eye, PenTool, Minus, Plus, UploadCloud, FileText, Loader, ArrowLeft, Sparkles, ChevronLeft, ChevronRight, Search, ZoomIn, ZoomOut, Keyboard, X, Hash } from 'lucide-react';
@@ -975,7 +977,123 @@ const ProcessingScreen: React.FC<{ file: UploadedFile | null, onComplete: (solut
   );
 };
 
+// --- MEMOIZED PAGE CONTENT COMPONENT ---
+interface PageContentProps {
+  solution: QuestionSolution;
+  index: number;
+  globalSeed: number;
+  penThickness: number;
+  isScannerMode: boolean;
+}
+
+const PageContent = memo(({ solution, index, globalSeed, penThickness, isScannerMode }: PageContentProps) => {
+  const solutionSeed = globalSeed + (index * 9999);
+  let charAccumulator = 0;
+
+  return (
+    <PaperSheet isScannerMode={isScannerMode}>
+      <div className="ballpoint-ink flex flex-col items-start w-full text-xl paper-content" style={{ fontWeight: penThickness > 0.7 ? 600 : 400 }}>
+        <div className="flex items-baseline mb-6 -ml-4">
+          <span className="text-3xl font-bold font-[Caveat] text-[#0a2472] mr-4 relative">
+            {solution.questionNumber}
+            <div className="absolute -bottom-1 left-0 w-full">
+              <HandwrittenLineSVG width="100%" seed={solutionSeed} thickness={penThickness} />
+            </div>
+          </span>
+          <div className="opacity-95 font-semibold">
+            <HandwrittenLineParser 
+              text={solution.questionText} 
+              seed={solutionSeed} 
+              thickness={penThickness} 
+              globalDelayOffset={charAccumulator}
+              lineIndex={0}
+            />
+            <span className="hidden">{charAccumulator += solution.questionText.length}</span>
+          </div>
+        </div>
+
+        <div className="w-full flex flex-col gap-1">
+          {solution.steps.map((line, lineIdx) => {
+            const isStepLabel = line.trim().startsWith('Step') || line.trim().startsWith('Sol:') || line.trim().startsWith('Given') || line.trim().startsWith('Ans');
+            const isMath = line.includes('=') || line.includes('∝');
+            if (line === "") return <div key={lineIdx} className="h-[1.5rem]"></div>;
+            let indentClass = "";
+            if (line.trim().startsWith('(') || line.trim().startsWith('1.') || line.trim().startsWith('2.')) indentClass = "pl-6";
+            else if (isMath && !isStepLabel) indentClass = "pl-12";
+            
+            const lineComponent = (
+              <div key={lineIdx} className={`relative min-h-[2.6rem] flex items-center ${indentClass}`}>
+                {isStepLabel && (
+                  <div className="absolute left-0 bottom-2 w-12">
+                    <HandwrittenLineSVG width="100%" seed={solutionSeed + lineIdx} thickness={penThickness} />
+                  </div>
+                )}
+                <HandwrittenLineParser 
+                  text={line} 
+                  seed={solutionSeed + 500 + (lineIdx * 77)} 
+                  thickness={penThickness} 
+                  globalDelayOffset={charAccumulator}
+                  lineIndex={lineIdx + 1}
+                />
+              </div>
+            );
+            
+            charAccumulator += line.length + 5;
+            return lineComponent;
+          })}
+        </div>
+      </div>
+    </PaperSheet>
+  );
+});
+
+PageContent.displayName = 'PageContent';
+
+// --- VIRTUALIZED ROW COMPONENT for react-window v2 ---
+interface VirtualizedRowCustomProps {
+  filteredSolutions: QuestionSolution[];
+  globalSeed: number;
+  penThickness: number;
+  isScannerMode: boolean;
+}
+
+const VirtualizedRow = ({ 
+  index, 
+  style, 
+  filteredSolutions, 
+  globalSeed, 
+  penThickness, 
+  isScannerMode 
+}: { 
+  index: number; 
+  style: CSSProperties;
+  ariaAttributes?: Record<string, unknown>;
+} & VirtualizedRowCustomProps): React.ReactElement => {
+  const sol = filteredSolutions[index];
+  
+  if (!sol) {
+    return <div style={style} className="paper-sheet-container" />;
+  }
+  
+  return (
+    <div 
+      style={{ ...style, paddingTop: '32px', paddingBottom: '32px' }}
+      className="paper-sheet-container"
+    >
+      <PageContent
+        solution={sol}
+        index={index}
+        globalSeed={globalSeed}
+        penThickness={penThickness}
+        isScannerMode={isScannerMode}
+      />
+    </div>
+  );
+};
+
 // --- ENHANCED RESULTS SCREEN ---
+const ITEM_HEIGHT = 1200; // A4 height ~29.7cm ≈ 1122px + margin
+
 const ResultsScreen: React.FC<{ solutions: QuestionSolution[], onReset: () => void }> = ({ solutions, onReset }) => {
   const [globalSeed, setGlobalSeed] = useState(Date.now()); 
   const [penThickness, setPenThickness] = useState(0.5);
@@ -986,7 +1104,21 @@ const ResultsScreen: React.FC<{ solutions: QuestionSolution[], onReset: () => vo
   const [showSearch, setShowSearch] = useState(false);
   const [zoom, setZoom] = useState(100);
   const [showShortcuts, setShowShortcuts] = useState(false);
-  const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const listRef = useListRef(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerHeight, setContainerHeight] = useState(800);
+
+  useEffect(() => {
+    const updateHeight = () => {
+      if (containerRef.current) {
+        const headerHeight = 70;
+        setContainerHeight(window.innerHeight - headerHeight);
+      }
+    };
+    updateHeight();
+    window.addEventListener('resize', updateHeight);
+    return () => window.removeEventListener('resize', updateHeight);
+  }, []);
 
   const regenerate = () => setGlobalSeed(prev => prev + 1);
   const toggleScanner = () => setIsScannerMode(prev => !prev);
@@ -994,7 +1126,9 @@ const ResultsScreen: React.FC<{ solutions: QuestionSolution[], onReset: () => vo
   const goToPage = useCallback((page: number) => {
     const targetPage = Math.max(0, Math.min(page, solutions.length - 1));
     setCurrentPage(targetPage);
-    pageRefs.current[targetPage]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    try {
+      listRef.current?.scrollToRow({ index: targetPage, align: 'start' });
+    } catch (e) {}
   }, [solutions.length]);
 
   useEffect(() => {
@@ -1062,8 +1196,6 @@ const ResultsScreen: React.FC<{ solutions: QuestionSolution[], onReset: () => vo
       sol.steps.some(step => step.toLowerCase().includes(query))
     );
   }, [solutions, searchQuery]);
-
-  let charAccumulator = 0;
 
   return (
     <div className="w-full flex flex-col items-center bg-[#e5e5e5] min-h-screen">
@@ -1202,74 +1334,35 @@ const ResultsScreen: React.FC<{ solutions: QuestionSolution[], onReset: () => vo
       </div>
 
       <div 
-        className="w-full flex flex-col gap-12 items-center max-w-[21cm] py-8 transition-transform origin-top"
-        style={{ transform: `scale(${zoom / 100})` }}
+        ref={containerRef}
+        className="w-full flex flex-col items-center"
       >
-        {filteredSolutions.map((sol, index) => {
-          const solutionSeed = globalSeed + (index * 9999);
-          
-          return (
-            <div 
-              key={sol.id || index} 
-              ref={el => { if (el) pageRefs.current[index] = el; }}
-              className="paper-sheet-container scroll-mt-24"
-            >
-              <PaperSheet isScannerMode={isScannerMode}>
-                <div className="ballpoint-ink flex flex-col items-start w-full text-xl paper-content" style={{ fontWeight: penThickness > 0.7 ? 600 : 400 }}>
-                  <div className="flex items-baseline mb-6 -ml-4">
-                    <span className="text-3xl font-bold font-[Caveat] text-[#0a2472] mr-4 relative">
-                      {sol.questionNumber}
-                      <div className="absolute -bottom-1 left-0 w-full">
-                        <HandwrittenLineSVG width="100%" seed={solutionSeed} thickness={penThickness} />
-                      </div>
-                    </span>
-                    <div className="opacity-95 font-semibold">
-                      <HandwrittenLineParser 
-                        text={sol.questionText} 
-                        seed={solutionSeed} 
-                        thickness={penThickness} 
-                        globalDelayOffset={charAccumulator}
-                        lineIndex={0}
-                      />
-                      <span className="hidden">{charAccumulator += sol.questionText.length}</span>
-                    </div>
-                  </div>
-
-                  <div className="w-full flex flex-col gap-1">
-                    {sol.steps.map((line, lineIdx) => {
-                      const isStepLabel = line.trim().startsWith('Step') || line.trim().startsWith('Sol:') || line.trim().startsWith('Given') || line.trim().startsWith('Ans');
-                      const isMath = line.includes('=') || line.includes('∝');
-                      if (line === "") return <div key={lineIdx} className="h-[1.5rem]"></div>;
-                      let indentClass = "";
-                      if (line.trim().startsWith('(') || line.trim().startsWith('1.') || line.trim().startsWith('2.')) indentClass = "pl-6";
-                      else if (isMath && !isStepLabel) indentClass = "pl-12";
-                      
-                      const lineComponent = (
-                        <div key={lineIdx} className={`relative min-h-[2.6rem] flex items-center ${indentClass}`}>
-                          {isStepLabel && (
-                            <div className="absolute left-0 bottom-2 w-12">
-                              <HandwrittenLineSVG width="100%" seed={solutionSeed + lineIdx} thickness={penThickness} />
-                            </div>
-                          )}
-                          <HandwrittenLineParser 
-                            text={line} 
-                            seed={solutionSeed + 500 + (lineIdx * 77)} 
-                            thickness={penThickness} 
-                            globalDelayOffset={charAccumulator}
-                            lineIndex={lineIdx + 1}
-                          />
-                        </div>
-                      );
-                      
-                      charAccumulator += line.length + 5;
-                      return lineComponent;
-                    })}
-                  </div>
-                </div>
-              </PaperSheet>
-            </div>
-          );
-        })}
+        <div 
+          className="transition-transform origin-top"
+          style={{ transform: `scale(${zoom / 100})` }}
+        >
+          <List<VirtualizedRowCustomProps>
+            listRef={listRef}
+            defaultHeight={containerHeight}
+            rowCount={filteredSolutions.length}
+            rowHeight={ITEM_HEIGHT}
+            overscanCount={3}
+            onRowsRendered={({ startIndex }) => {
+              if (startIndex !== currentPage) {
+                setCurrentPage(startIndex);
+              }
+            }}
+            className="scrollbar-thin scrollbar-thumb-green-600 scrollbar-track-gray-800"
+            style={{ maxWidth: '21cm', margin: '0 auto', height: containerHeight }}
+            rowComponent={VirtualizedRow}
+            rowProps={{
+              filteredSolutions,
+              globalSeed,
+              penThickness,
+              isScannerMode,
+            }}
+          />
+        </div>
       </div>
     </div>
   );
