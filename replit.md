@@ -51,10 +51,27 @@ The app uses a sophisticated handwriting simulation:
 - AllowedHosts: true (for proxy compatibility)
 
 ## Recent Changes (January 27, 2026)
+- **Converted to Android App using Capacitor**
+  - Added @capacitor/core, @capacitor/cli, @capacitor/android packages
+  - Created Android project in /android folder
+  - Configured Capacitor for HTTPS scheme and mixed content
+  - App ID: com.assignify.app
 - Updated lucide-react to ^0.460.0 for React 19 compatibility
 - Added missing QuestionSolution type to types.ts
 - Added AI_SYSTEM_PROMPT and FALLBACK_SOLUTIONS exports to constants.ts
 - Configured deployment for static hosting
+
+## Android Build Instructions
+1. Build and sync: `npm run android:sync`
+2. Open in Android Studio: `npm run android:open` (or import /android folder manually)
+3. Build APK from Android Studio: Build > Build Bundle(s) / APK(s) > Build APK(s)
+4. The APK will be in: android/app/build/outputs/apk/debug/app-debug.apk
+
+### Android Project Structure
+- `/android` - Complete Android Studio project
+- `/android/app/src/main/assets/public` - Web app files
+- `/android/app/src/main/res` - Android resources (icons, splash screens)
+- `/capacitor.config.ts` - Capacitor configuration
 
 ## Previous Changes (December 7, 2025)
 - Converted from Physics-specific solver to Universal TMA Solver (Assignify)
