@@ -1,4 +1,4 @@
-export type AppState = 'upload' | 'processing' | 'preview';
+export type AppState = 'upload' | 'processing' | 'results';
 
 export interface UploadedFile {
   name: string;
@@ -27,15 +27,9 @@ export interface HandwritingStyle {
 }
 
 export interface QuestionSolution {
+  id?: string;
+  questionNumber?: string;
   questionText: string;
   steps: string[];
   diagram?: string;
-}
-
-declare global {
-  namespace NodeJS {
-    interface ProcessEnv {
-      API_KEY: string;
-    }
-  }
 }

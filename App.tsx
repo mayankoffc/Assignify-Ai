@@ -1,112 +1,9 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import * as pdfjsLib from 'pdfjs-dist';
 import { PaperSheet } from './components/PaperSheet';
-import { FALLBACK_SOLUTIONS, AI_SYSTEM_PROMPT } from './constants';
+import { FALLBACK_SOLUTIONS } from './constants';
 import { RefreshCcw, Camera, Eye, PenTool, Minus, Plus, UploadCloud, FileText, Loader, ArrowLeft, Sparkles } from 'lucide-react';
 import { AppState, UploadedFile, QuestionSolution } from './types';
-import { GoogleGenAI } from "@google/genai";
-
-// Set PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
-
-// --- GENERATIVE AI INTEGRATION ---
-
-const generateIllustrationWithGemini = async (prompt: string): Promise<string | null> => {
-    try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const response = await ai.models.generateImages({
-          model: 'imagen-3.0-generate-002',
-          prompt: `Hand-drawn educational illustration for a student assignment: ${prompt}. Style: neat sketch, like a student would draw.`,
-          config: { 
-             numberOfImages: 1,
-             aspectRatio: "4:3"
-          }
-        });
-        
-        // Extract image from response - handle different SDK response formats
-        if (response.generatedImages && response.generatedImages.length > 0) {
-            const imageData = response.generatedImages[0].image;
-            if (imageData) {
-                // Try different property names used by various SDK versions
-                const base64 = imageData.imageBytes || imageData.base64Data || imageData.bytesBase64Encoded;
-                if (base64) {
-                    return `data:image/png;base64,${base64}`;
-                }
-            }
-        }
-        return null;
-    } catch (error) {
-        console.error("GenAI Image Error:", error);
-        return null;
-    }
-};
-
-const solveWithGemini = async (fileData: string): Promise<QuestionSolution[]> => {
-    try {
-      // Check if API key exists
-      if (!process.env.API_KEY || process.env.API_KEY.trim() === '') {
-        console.warn("⚠️ API_KEY not configured. Using fallback solutions for demo.");
-        return FALLBACK_SOLUTIONS;
-      }
-
-      // Detect PDF and extract text using pdfjs-dist
-      let extractedText = '';
-      if (fileData.startsWith('data:application/pdf')) {
-        try {
-          const base64Data = fileData.split(',')[1];
-          const pdfBuffer = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
-          const pdf = await pdfjsLib.getDocument({ data: pdfBuffer }).promise;
-          let fullText = '';
-          
-          for (let i = 1; i <= pdf.numPages; i++) {
-            const page = await pdf.getPage(i);
-            const textContent = await page.getTextContent();
-            const pageText = textContent.items.map((item: any) => item.str).join(' ');
-            fullText += pageText + '\n';
-          }
-          
-          extractedText = fullText.trim();
-        } catch (pdfError) {
-          console.warn("PDF extraction failed:", pdfError);
-          extractedText = '[PDF could not be parsed. Analyzing as image...]';
-        }
-      }
-
-      // If not PDF, fallback to image or raw text
-      if (!extractedText || extractedText.length < 10) {
-        extractedText = '[Non-PDF or empty PDF uploaded. Please upload a PDF with content for best results.]';
-      }
-
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const prompt = `${AI_SYSTEM_PROMPT}\n\nHere is the assignment content:\n${extractedText}`;
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: {
-          parts: [
-            { text: prompt }
-          ]
-        },
-        config: {
-          responseMimeType: "application/json",
-        }
-      });
-
-      let text = response.text;
-      if (!text) throw new Error("No response from AI");
-      text = text.replace(/```json/g, '').replace(/```/g, '').trim();
-      try {
-        const solutions = JSON.parse(text);
-        return solutions;
-      } catch (jsonError) {
-        console.error("JSON Parse Error:", jsonError);
-        throw new Error("Failed to parse AI response");
-      }
-    } catch (e) {
-      console.error("Solver Error:", e);
-      return FALLBACK_SOLUTIONS;
-    }
-};
+import { processFileToSolutions, terminateWorker, OCRProgress } from './services/ocrService';
 // --- HANDWRITING ENGINE ---
 
 const seededRandom = (seed: number) => {
@@ -260,46 +157,10 @@ const PencilArrow: React.FC<{ x1: number; y1: number; x2: number; y2: number; se
 
 // --- DIAGRAM RENDERER ---
 const HandwrittenDiagram: React.FC<{ type: string; seed: number }> = ({ type, seed }) => {
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (type.startsWith('GENAI_IMAGE')) {
-        const prompt = type.replace('GENAI_IMAGE_', '').replace('GENAI_IMAGE[', '').replace(']', '');
-        setLoading(true);
-        generateIllustrationWithGemini(prompt).then(url => {
-            setImageUrl(url);
-            setLoading(false);
-        });
-    }
-  }, [type]);
-
-  // If it's a realistic illustration (GenAI Image)
-  if (type.startsWith('GENAI_IMAGE')) {
-    return (
-       <div className="w-full my-6 flex justify-center">
-         <div className="relative p-2 bg-white shadow-md border border-gray-200 transform transition-all duration-700" style={{ transform: `rotate(${randomRange(seed, -1, 1)}deg)` }}>
-           <div className="w-full max-w-2xl min-h-[300px] bg-gray-50 relative overflow-hidden flex flex-col items-center justify-center border border-gray-300">
-               {loading && <div className="absolute inset-0 flex items-center justify-center bg-gray-100 z-20"><Loader className="animate-spin text-gray-400" /></div>}
-               {imageUrl ? (
-                   <img src={imageUrl} alt="Generated Illustration" className="w-full h-full object-cover mix-blend-multiply opacity-90 filter contrast-125" />
-               ) : (
-                   !loading && <div className="text-gray-400 text-xs p-4 text-center">Illustration Placeholder (API Key Required)</div>
-               )}
-               {/* Simulating glue wrinkles/tape */}
-               <div className="absolute -top-2 left-1/2 w-8 h-4 bg-yellow-200/40 rotate-1 transform -translate-x-1/2"></div>
-           </div>
-         </div>
-       </div>
-    );
-  }
-
-  // Standard Pencil Sketches - Generic placeholder for custom diagrams
   return (
     <div className="w-full my-6 flex justify-center">
       <div className="relative p-2 w-full flex justify-center" style={{ transform: `rotate(${randomRange(seed, -1.5, 1.5)}deg)` }}>
         <svg width="100%" height="auto" viewBox="0 0 350 180" className="overflow-visible max-w-2xl" style={{ minHeight: "180px" }}>
-          {/* Generic placeholder for any diagram type */}
           <rect x="20" y="20" width="310" height="140" fill="none" stroke="#2d2d2d" strokeWidth="1" strokeDasharray="5,5" className="graphite-pencil" />
           <PencilText x={175} y={90} text={`[Diagram: ${type}]`} seed={seed} fontSize={16} />
           <PencilText x={175} y={115} text="(Refer to textbook)" seed={seed + 1} fontSize={12} />
@@ -358,15 +219,10 @@ const HandwrittenSqrt: React.FC<{ content: string; seed: number; thickness: numb
 };
 
 const HandwrittenLineParser: React.FC<{ text: string; seed: number; thickness: number; globalDelayOffset: number }> = ({ text, seed, thickness, globalDelayOffset }) => {
-  // Safe matching that ignores surrounding whitespace
   const diagramMatch = text.trim().match(/^DIAGRAM\[(.*?)\]$/);
-  const genAiMatch = text.trim().match(/^GENAI_IMAGE\[(.*?)\]$/); 
 
   if (diagramMatch) {
     return <HandwrittenDiagram type={diagramMatch[1]} seed={seed} />;
-  }
-  if (genAiMatch) {
-      return <HandwrittenDiagram type={`GENAI_IMAGE_${genAiMatch[1]}`} seed={seed} />;
   }
 
   const parts = [];
@@ -492,13 +348,16 @@ const ProcessingScreen: React.FC<{ file: UploadedFile | null, onComplete: (solut
   useEffect(() => {
     if (!file) return;
 
-    const processFile = async () => {
-        setLogLines(prev => [...prev, `> FILE RECEIVED: ${file.name}`, "> CONNECTING TO GEMINI 2.5 FLASH...", "> ANALYZING ALL QUESTIONS IN DOCUMENT..."]);
+    const handleProgress = (progress: OCRProgress) => {
+      setLogLines(prev => [...prev, `> ${progress.status.toUpperCase()} (${progress.progress}%)`]);
+    };
+
+    const processFileWithOCR = async () => {
+        setLogLines(prev => [...prev, `> FILE RECEIVED: ${file.name}`, "> INITIALIZING TESSERACT OCR ENGINE...", "> EXTRACTING TEXT FROM DOCUMENT..."]);
         
-        // Call AI
         try {
-            const solutions = await solveWithGemini(file.data);
-            setLogLines(prev => [...prev, "> SOLUTIONS GENERATED.", "> FORMATTING HANDWRITING VECTORS...", "> COMPILING FINAL RENDER..."]);
+            const solutions = await processFileToSolutions(file.data, file.type, handleProgress);
+            setLogLines(prev => [...prev, "> TEXT EXTRACTION COMPLETE.", "> FORMATTING HANDWRITING VECTORS...", "> COMPILING FINAL RENDER..."]);
             setTimeout(() => {
                 onComplete(solutions);
             }, 1000);
@@ -510,9 +369,10 @@ const ProcessingScreen: React.FC<{ file: UploadedFile | null, onComplete: (solut
         }
     };
     
-    // Slight delay to show UI
-    const t = setTimeout(processFile, 1500);
-    return () => clearTimeout(t);
+    const t = setTimeout(processFileWithOCR, 1500);
+    return () => {
+      clearTimeout(t);
+    };
   }, [file, onComplete]);
 
   return (
@@ -664,17 +524,10 @@ const App: React.FC = () => {
   const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
-    // API Key Selection Check
-    const checkKey = async () => {
-        if (window.aistudio && window.aistudio.hasSelectedApiKey) {
-            const hasKey = await window.aistudio.hasSelectedApiKey();
-            if (!hasKey && window.aistudio.openSelectKey) {
-                await window.aistudio.openSelectKey();
-            }
-        }
-    };
-    checkKey();
     setIsClient(true);
+    return () => {
+      terminateWorker();
+    };
   }, []);
 
   if (!isClient) return null;

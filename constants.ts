@@ -34,24 +34,11 @@ export const DEFAULT_STYLE: {
   fontMix: ["Caveat", "Cedarville Cursive", "Shadows Into Light"]
 };
 
-export const AI_SYSTEM_PROMPT = `You are an expert tutor and assignment solver. Your task is to analyze the provided assignment content and generate complete, accurate solutions.
-
-For each question in the assignment, provide:
-1. The exact question text
-2. A detailed, well-explained answer broken into steps
-3. If relevant, specify a diagram type (optional)
-
-Return your response as a JSON array with this structure:
-[
-  {
-    "questionText": "The question text",
-    "steps": ["Sol:", "Step 1 explanation...", "Step 2...", "Final answer..."],
-    "diagram": "Optional: GENAI_IMAGE_[description of diagram needed]"
-  }
-]
-
-Each step should be a separate string in the steps array. Use empty strings "" for blank lines/spacing.
-Make answers thorough but concise. Use proper mathematical notation where needed. For science questions, include relevant formulas and explanations.`;
+export const OCR_CONFIG = {
+  PDF_SCALE: 2.0,
+  SUPPORTED_FORMATS: ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp'],
+  MAX_FILE_SIZE_MB: 50,
+};
 
 export const FALLBACK_SOLUTIONS = [
   {
