@@ -1,0 +1,33 @@
+{
+  "name": "Assignify AI Development",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:1-20-bullseye",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "lts"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "bradlc.vscode-tailwindcss"
+      ],
+      "settings": {
+        "typescript.tsdk": "node_modules/typescript/lib",
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
+    }
+  },
+  "forwardPorts": [5173],
+  "portsAttributes": {
+    "5173": {
+      "label": "Application",
+      "onAutoForward": "openBrowser",
+      "protocol": "https"
+    }
+  },
+  "postCreateCommand": "npm install && echo '\n✅ Codespace ready! Run: npm run dev' || echo '⚠️  Please run: npm install && npm run dev'",
+  "remoteUser": "node",
+  "waitFor": "postCreateCommand"
+}
