@@ -14,7 +14,8 @@ if [ ! -f .env.local ]; then
     read -p "Would you like to create .env.local now? (y/n) " -n 1 -r
     echo ""
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        read -p "Enter your Gemini API key: " api_key
+        read -s -p "Enter your Gemini API key: " api_key
+        echo ""
         echo "VITE_API_KEY=$api_key" > .env.local
         echo "✅ Created .env.local file"
     else
