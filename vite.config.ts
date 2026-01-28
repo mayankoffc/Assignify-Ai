@@ -9,6 +9,17 @@ export default defineConfig(({ mode }) => {
         port: 5173,
         host: '0.0.0.0',
         strictPort: true,
+        hmr: {
+          // Enable HMR for Codespaces
+          clientPort: 443,
+          protocol: 'wss',
+        },
+        // Allow access from Codespaces forwarded ports
+        cors: true,
+        // Configure headers for Codespaces
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+        },
       },
       plugins: [react()],
       define: {
