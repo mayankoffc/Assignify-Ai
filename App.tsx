@@ -7,10 +7,12 @@ import {
   RefreshCcw, Camera, Eye, PenTool, Minus, Plus, UploadCloud, FileText, Loader, 
   ArrowLeft, Sparkles, ChevronLeft, ChevronRight, Search, ZoomIn, ZoomOut, 
   Keyboard, X, Menu, User, Home, Settings, HelpCircle, FileUp, Type, 
-  Layers, CheckCircle, Clock, Zap, BarChart3, Download, Wand2, Image, Hash, FileDigit
+  Layers, CheckCircle, Clock, Zap, BarChart3, Download, Wand2, Image, Hash, FileDigit, Brain
 } from 'lucide-react';
-import { AppState, UploadedFile, QuestionSolution, PreviewData, ExtractionStats } from './types';
+import { AppState, UploadedFile, QuestionSolution, PreviewData, ExtractionStats, LinePlan, WritingPlan, PagePlan } from './types';
 import { extractPreviewData, processPreviewToSolutions, terminateWorker, OCRProgress } from './services/ocrService';
+import { aiPlanningService } from './services/aiPlanningService';
+import { ScanningAnimation } from './components/ScanningAnimation';
 
 const COLORS = {
   bgDark: '#2F313A',
@@ -659,14 +661,18 @@ const UploadScreen: React.FC<{ onUpload: (file: UploadedFile) => void }> = ({ on
 
 const PreviewScreen: React.FC<{ 
   file: UploadedFile; 
+  apiKey?: string;
+  onApiKeyChange?: (key: string) => void;
   onConvert: (preview: PreviewData) => void;
   onBack: () => void;
-}> = ({ file, onConvert, onBack }) => {
+}> = ({ file, apiKey = '', onApiKeyChange, onConvert, onBack }) => {
   const [previewData, setPreviewData] = useState<PreviewData | null>(null);
   const [isExtracting, setIsExtracting] = useState(true);
   const [extractProgress, setExtractProgress] = useState(0);
   const [extractStatus, setExtractStatus] = useState('Loading document...');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showApiInput, setShowApiInput] = useState(false);
+  const [localApiKey, setLocalApiKey] = useState(apiKey);
 
   useEffect(() => {
     const extract = async () => {
@@ -814,6 +820,83 @@ const PreviewScreen: React.FC<{
                   </div>
                 </div>
 
+                <div className="rounded-2xl p-6 mb-4" style={{ backgroundColor: COLORS.bgCard }}>
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+                        style={{ backgroundColor: localApiKey ? `${COLORS.primaryGreen}20` : `${COLORS.accentBlue}20` }}>
+                        <Brain size={20} style={{ color: localApiKey ? COLORS.primaryGreen : COLORS.accentBlue }} />
+                      </div>
+                      <div>
+                        <h4 className="font-medium" style={{ color: COLORS.textPrimary }}>AI Layout Planning</h4>
+                        <p className="text-xs" style={{ color: COLORS.textSecondary }}>
+                          {localApiKey ? 'Gemini AI enabled' : 'Optional: Add API key for smarter layout'}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setShowApiInput(!showApiInput)}
+                      className="px-3 py-1.5 rounded-lg text-sm font-medium transition-all"
+                      style={{ backgroundColor: COLORS.bgDark, color: COLORS.textSecondary }}
+                    >
+                      {showApiInput ? 'Hide' : localApiKey ? 'Edit' : 'Add Key'}
+                    </button>
+                  </div>
+                  
+                  {showApiInput && (
+                    <div className="space-y-3">
+                      <input
+                        type="password"
+                        value={localApiKey}
+                        onChange={(e) => setLocalApiKey(e.target.value)}
+                        placeholder="Enter Gemini API key..."
+                        className="w-full px-4 py-3 rounded-xl text-sm outline-none transition-all focus:ring-2"
+                        style={{ 
+                          backgroundColor: COLORS.bgDark, 
+                          color: COLORS.textPrimary,
+                          borderColor: COLORS.border
+                        }}
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => {
+                            onApiKeyChange?.(localApiKey);
+                            setShowApiInput(false);
+                          }}
+                          className="px-4 py-2 rounded-lg text-sm font-medium text-white"
+                          style={{ backgroundColor: COLORS.primaryGreen }}
+                        >
+                          Save Key
+                        </button>
+                        <button
+                          onClick={() => {
+                            setLocalApiKey('');
+                            onApiKeyChange?.('');
+                          }}
+                          className="px-4 py-2 rounded-lg text-sm"
+                          style={{ backgroundColor: COLORS.bgDark, color: COLORS.textSecondary }}
+                        >
+                          Clear
+                        </button>
+                      </div>
+                      <p className="text-xs" style={{ color: COLORS.textSecondary }}>
+                        Get your free API key from <a href="https://aistudio.google.com/app/apikey" target="_blank" className="underline" style={{ color: COLORS.accentBlue }}>Google AI Studio</a>
+                      </p>
+                    </div>
+                  )}
+                  
+                  {!showApiInput && (
+                    <div className="flex flex-wrap gap-2 text-xs">
+                      {['Smart line breaks', 'Q/A positioning', 'Fraction rendering', 'Human-like margins'].map((feature, i) => (
+                        <span key={i} className="px-2 py-1 rounded-full" 
+                          style={{ backgroundColor: COLORS.bgDark, color: localApiKey ? COLORS.primaryGreen : COLORS.textSecondary }}>
+                          {localApiKey ? '✓' : '○'} {feature}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 <button
                   onClick={() => onConvert(previewData)}
                   className="w-full py-5 rounded-2xl flex items-center justify-center gap-3 text-xl font-bold text-white transition-all hover:scale-[1.02] active:scale-[0.98] shadow-xl"
@@ -837,27 +920,65 @@ const PreviewScreen: React.FC<{
 const ProcessingScreen: React.FC<{ 
   previewData: PreviewData | null;
   fileName: string;
-  onComplete: (solutions: QuestionSolution[]) => void 
-}> = ({ previewData, fileName, onComplete }) => {
+  apiKey?: string;
+  onComplete: (solutions: QuestionSolution[], writingPlan?: WritingPlan) => void 
+}> = ({ previewData, fileName, apiKey, onComplete }) => {
   const [progress, setProgress] = useState(0);
   const [currentStatus, setCurrentStatus] = useState('Initializing');
+  const [currentPhase, setCurrentPhase] = useState<'scanning' | 'planning' | 'writing'>('scanning');
+  const [currentScanPage, setCurrentScanPage] = useState(1);
   const [stats, setStats] = useState({ letters: 0, speed: 0, pages: 0 });
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [aiPlanStatus, setAiPlanStatus] = useState('');
+  const [writingPlan, setWritingPlan] = useState<WritingPlan | null>(null);
 
   useEffect(() => {
     if (!previewData) return;
 
     const processData = async () => {
       const totalChars = previewData.stats.totalCharacters;
-      const charsPerTick = Math.max(50, Math.floor(totalChars / 30));
-      let currentLetters = 0;
+      const totalPages = previewData.stats.totalPages;
       
+      setCurrentPhase('scanning');
       setProgress(5);
-      setCurrentStatus('Analyzing structure');
-      await new Promise(r => setTimeout(r, 400));
+      setCurrentStatus('Scanning document pages');
       
-      setProgress(20);
+      for (let page = 1; page <= Math.min(totalPages, 20); page++) {
+        setCurrentScanPage(page);
+        setProgress(5 + Math.floor((page / totalPages) * 20));
+        await new Promise(r => setTimeout(r, 300 + Math.random() * 200));
+      }
+      
+      setCurrentPhase('planning');
+      setProgress(30);
+      setCurrentStatus('AI analyzing document structure');
+      setAiPlanStatus('Connecting to AI...');
+      
+      let plan: WritingPlan | null = null;
+      
+      if (apiKey) {
+        try {
+          aiPlanningService.initialize(apiKey);
+          plan = await aiPlanningService.planWriting(previewData.extractedText, (status) => {
+            setAiPlanStatus(status);
+          });
+          setWritingPlan(plan);
+          setAiPlanStatus('AI plan ready');
+        } catch (e) {
+          console.warn('AI planning failed, using fallback');
+          setAiPlanStatus('Using smart fallback planning');
+        }
+      } else {
+        setAiPlanStatus('Using smart layout algorithm');
+        await new Promise(r => setTimeout(r, 800));
+      }
+      
+      setProgress(45);
+      setCurrentPhase('writing');
       setCurrentStatus('Rendering handwriting');
+      
+      let currentLetters = 0;
+      const charsPerTick = Math.max(50, Math.floor(totalChars / 30));
       
       const interval = setInterval(() => {
         currentLetters = Math.min(currentLetters + charsPerTick, totalChars);
@@ -870,30 +991,39 @@ const ProcessingScreen: React.FC<{
       }, 100);
       
       try {
-        setProgress(40);
+        setProgress(50);
         setCurrentStatus('Converting to handwriting');
         
         const solutions = await processPreviewToSolutions(previewData, (p) => {
-          setProgress(40 + Math.floor(p.progress * 0.4));
+          setProgress(50 + Math.floor(p.progress * 0.35));
           setCurrentStatus(p.status);
         });
-        setStats(prev => ({ ...prev, pages: solutions.length }));
         
+        if (plan) {
+          solutions.forEach((sol, idx) => {
+            if (plan.pages[idx]) {
+              sol.linePlans = plan.pages[idx].lines;
+              sol.pagePlan = plan.pages[idx];
+            }
+          });
+        }
+        
+        setStats(prev => ({ ...prev, pages: solutions.length }));
         clearInterval(interval);
         setStats(prev => ({ ...prev, letters: totalChars, pages: solutions.length }));
         
-        setProgress(85);
-        setCurrentStatus('Finalizing pages');
+        setProgress(90);
+        setCurrentStatus('Applying micro-variations');
         await new Promise(r => setTimeout(r, 400));
         
         setProgress(95);
-        setCurrentStatus('Applying ink effects');
-        await new Promise(r => setTimeout(r, 400));
+        setCurrentStatus('Adding ink effects');
+        await new Promise(r => setTimeout(r, 300));
         
         setProgress(100);
         setCurrentStatus('Complete');
         
-        setTimeout(() => onComplete(solutions), 500);
+        setTimeout(() => onComplete(solutions, plan || undefined), 500);
       } catch (e) {
         clearInterval(interval);
         setCurrentStatus('Using fallback mode');
@@ -903,12 +1033,12 @@ const ProcessingScreen: React.FC<{
     
     const t = setTimeout(processData, 300);
     return () => clearTimeout(t);
-  }, [previewData, onComplete]);
+  }, [previewData, apiKey, onComplete]);
 
   const stages = [
-    { label: 'Text Extraction', icon: FileText, done: progress > 30 },
-    { label: 'Pixel Rendering', icon: Layers, done: progress > 60 },
-    { label: 'Handwriting Conversion', icon: Type, done: progress > 90 },
+    { label: 'Page Scanning', icon: FileText, done: currentPhase !== 'scanning', active: currentPhase === 'scanning' },
+    { label: 'AI Planning', icon: Brain, done: currentPhase === 'writing', active: currentPhase === 'planning' },
+    { label: 'Handwriting', icon: Type, done: progress >= 100, active: currentPhase === 'writing' },
   ];
 
   return (
@@ -918,59 +1048,122 @@ const ProcessingScreen: React.FC<{
       <div className="flex-1 flex flex-col">
         <Header onMenuClick={() => setSidebarOpen(true)} title="Processing Document" />
         
-        <main className="flex-1 p-6 flex items-center justify-center">
-          <div className="max-w-2xl w-full space-y-6">
-            <div className="rounded-2xl p-8" style={{ backgroundColor: COLORS.bgCard }}>
-              <div className="text-center mb-8">
-                <div className="w-20 h-20 rounded-2xl mx-auto mb-4 flex items-center justify-center relative" style={{ background: `linear-gradient(135deg, ${COLORS.primaryGreen}, ${COLORS.accentBlue})` }}>
-                  <Loader className="animate-spin text-white" size={40} />
-                </div>
-                <h3 className="text-2xl font-bold mb-2" style={{ color: COLORS.textPrimary }}>Converting to Handwriting</h3>
-                <p style={{ color: COLORS.textSecondary }}>{fileName}</p>
-              </div>
-
-              <div className="space-y-4 mb-8">
-                <div className="flex justify-between text-sm">
-                  <span style={{ color: COLORS.textSecondary }}>{currentStatus}</span>
-                  <span className="font-bold" style={{ color: COLORS.primaryGreen }}>{progress}%</span>
-                </div>
-                <div className="h-3 rounded-full overflow-hidden" style={{ backgroundColor: COLORS.bgDark }}>
-                  <div 
-                    className="h-full transition-all duration-300 rounded-full"
-                    style={{ width: `${progress}%`, background: `linear-gradient(90deg, ${COLORS.primaryGreen}, ${COLORS.accentBlue})` }}
+        <main className="flex-1 p-6 overflow-auto">
+          <div className="max-w-4xl mx-auto space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="rounded-2xl p-6" style={{ backgroundColor: COLORS.bgCard }}>
+                {currentPhase === 'scanning' && previewData && (
+                  <ScanningAnimation
+                    totalPages={previewData.stats.totalPages}
+                    currentPage={currentScanPage}
+                    extractedText={previewData.extractedText}
+                    pageImages={previewData.stats.extractedImages.map(img => img.dataUrl)}
                   />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-4 mb-8">
-                {stages.map((stage, i) => (
-                  <div key={i} className="text-center p-4 rounded-xl" style={{ backgroundColor: COLORS.bgDark }}>
-                    <div className={`w-12 h-12 rounded-xl mx-auto mb-2 flex items-center justify-center transition-all ${stage.done ? '' : 'opacity-40'}`}
-                      style={{ backgroundColor: stage.done ? `${COLORS.primaryGreen}20` : COLORS.border }}
-                    >
-                      {stage.done ? (
-                        <CheckCircle size={24} style={{ color: COLORS.primaryGreen }} />
-                      ) : (
-                        <stage.icon size={24} style={{ color: COLORS.textSecondary }} />
-                      )}
+                )}
+                
+                {currentPhase === 'planning' && (
+                  <div className="text-center py-12">
+                    <div className="w-24 h-24 rounded-2xl mx-auto mb-6 flex items-center justify-center relative" 
+                      style={{ background: `linear-gradient(135deg, ${COLORS.accentBlue}, ${COLORS.primaryGreen})` }}>
+                      <Brain className="text-white animate-pulse" size={48} />
+                      <div className="absolute inset-0 rounded-2xl animate-ping opacity-20"
+                        style={{ backgroundColor: COLORS.accentBlue }} />
                     </div>
-                    <p className="text-xs font-medium" style={{ color: stage.done ? COLORS.primaryGreen : COLORS.textSecondary }}>{stage.label}</p>
+                    <h3 className="text-xl font-bold mb-2" style={{ color: COLORS.textPrimary }}>AI Planning Layout</h3>
+                    <p className="text-sm mb-4" style={{ color: COLORS.textSecondary }}>{aiPlanStatus}</p>
+                    <div className="flex flex-wrap gap-2 justify-center text-xs">
+                      {['Line breaks', 'Word spacing', 'Fractions', 'Q/A positions', 'Margins'].map((item, i) => (
+                        <span key={i} className="px-3 py-1 rounded-full" 
+                          style={{ backgroundColor: COLORS.bgDark, color: COLORS.primaryGreen }}>
+                          {item}
+                        </span>
+                      ))}
+                    </div>
                   </div>
-                ))}
+                )}
+                
+                {currentPhase === 'writing' && (
+                  <div className="text-center py-8">
+                    <div className="w-20 h-20 rounded-2xl mx-auto mb-4 flex items-center justify-center" 
+                      style={{ background: `linear-gradient(135deg, ${COLORS.primaryGreen}, ${COLORS.accentBlue})` }}>
+                      <PenTool className="text-white" size={36} />
+                    </div>
+                    <h3 className="text-xl font-bold mb-2" style={{ color: COLORS.textPrimary }}>Writing Pages</h3>
+                    <p className="text-sm" style={{ color: COLORS.textSecondary }}>
+                      Generating human-like handwriting with micro-variations...
+                    </p>
+                    
+                    <div className="mt-6 grid grid-cols-3 gap-3">
+                      {[
+                        { label: 'Letters', value: stats.letters },
+                        { label: 'Speed', value: `${stats.speed}/s` },
+                        { label: 'Pages', value: stats.pages },
+                      ].map((stat, i) => (
+                        <div key={i} className="p-3 rounded-xl" style={{ backgroundColor: COLORS.bgDark }}>
+                          <p className="text-lg font-bold" style={{ color: COLORS.primaryGreen }}>{stat.value}</p>
+                          <p className="text-xs" style={{ color: COLORS.textSecondary }}>{stat.label}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
-                {[
-                  { label: 'Letters Generated', value: stats.letters, icon: Type },
-                  { label: 'Speed (chars/sec)', value: stats.speed, icon: Zap },
-                  { label: 'Pages Ready', value: stats.pages, icon: FileText },
-                ].map((stat, i) => (
-                  <div key={i} className="p-4 rounded-xl text-center" style={{ backgroundColor: COLORS.bgDark }}>
-                    <stat.icon size={16} className="mx-auto mb-2" style={{ color: COLORS.primaryGreen }} />
-                    <p className="text-2xl font-bold" style={{ color: COLORS.textPrimary }}>{stat.value}</p>
-                    <p className="text-xs" style={{ color: COLORS.textSecondary }}>{stat.label}</p>
+              <div className="rounded-2xl p-6" style={{ backgroundColor: COLORS.bgCard }}>
+                <h4 className="text-sm font-medium mb-4" style={{ color: COLORS.textSecondary }}>Processing Progress</h4>
+                
+                <div className="space-y-4 mb-6">
+                  <div className="flex justify-between text-sm">
+                    <span style={{ color: COLORS.textSecondary }}>{currentStatus}</span>
+                    <span className="font-bold" style={{ color: COLORS.primaryGreen }}>{progress}%</span>
                   </div>
-                ))}
+                  <div className="h-3 rounded-full overflow-hidden" style={{ backgroundColor: COLORS.bgDark }}>
+                    <div 
+                      className="h-full transition-all duration-300 rounded-full"
+                      style={{ width: `${progress}%`, background: `linear-gradient(90deg, ${COLORS.primaryGreen}, ${COLORS.accentBlue})` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  {stages.map((stage, i) => (
+                    <div key={i} className="flex items-center gap-4 p-3 rounded-xl transition-all"
+                      style={{ backgroundColor: stage.active ? `${COLORS.primaryGreen}10` : COLORS.bgDark }}>
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all`}
+                        style={{ 
+                          backgroundColor: stage.done ? COLORS.primaryGreen : stage.active ? COLORS.accentBlue : COLORS.border,
+                        }}>
+                        {stage.done ? (
+                          <CheckCircle size={20} className="text-white" />
+                        ) : stage.active ? (
+                          <Loader size={20} className="text-white animate-spin" />
+                        ) : (
+                          <stage.icon size={20} style={{ color: COLORS.textSecondary }} />
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium" style={{ color: stage.done || stage.active ? COLORS.textPrimary : COLORS.textSecondary }}>
+                          {stage.label}
+                        </p>
+                        <p className="text-xs" style={{ color: COLORS.textSecondary }}>
+                          {stage.done ? 'Completed' : stage.active ? 'In progress...' : 'Waiting'}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-6 p-4 rounded-xl" style={{ backgroundColor: COLORS.bgDark }}>
+                  <p className="text-xs font-medium mb-2" style={{ color: COLORS.textSecondary }}>Processing: {fileName}</p>
+                  <div className="flex gap-4 text-xs">
+                    <span style={{ color: COLORS.primaryGreen }}>
+                      {previewData?.stats.totalPages || 0} pages
+                    </span>
+                    <span style={{ color: COLORS.accentBlue }}>
+                      {previewData?.stats.totalCharacters.toLocaleString() || 0} chars
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -991,10 +1184,95 @@ interface PageContentProps {
 const PageContent = memo(({ solution, index, globalSeed, penThickness, isScannerMode }: PageContentProps) => {
   const solutionSeed = globalSeed + (index * 9999);
   let charAccumulator = 0;
+  const linePlans = solution.linePlans || [];
+  const pagePlan = solution.pagePlan;
+  const hasAIPlan = linePlans.length > 0 || !!pagePlan;
+
+  const pageMarginLeft = pagePlan?.marginLeft ?? 20;
+  const pageMarginRight = pagePlan?.marginRight ?? 15;
+  const pageMarginTop = pagePlan?.marginTop ?? 20;
+  const pageLineSpacing = pagePlan?.lineSpacing ?? 28;
+  const pageOverallSlant = pagePlan?.overallSlant ?? 0;
+  const pageFatigue = pagePlan?.fatigueLevel ?? 0;
+
+  const getLinePlan = (lineIdx: number) => linePlans[lineIdx] || null;
+
+  const renderFraction = (numerator: string, denominator: string, seed: number) => (
+    <span className="inline-flex flex-col items-center mx-1 align-middle" style={{ fontSize: '0.75em' }}>
+      <span style={{ transform: `rotate(${randomRange(seed, -1, 1)}deg)` }}>{numerator}</span>
+      <span className="w-full border-t border-current my-0.5" style={{ transform: `rotate(${randomRange(seed + 1, -0.5, 0.5)}deg)` }} />
+      <span style={{ transform: `rotate(${randomRange(seed + 2, -1, 1)}deg)` }}>{denominator}</span>
+    </span>
+  );
+
+  const processLineWithFractions = (text: string, seed: number): React.ReactNode => {
+    const fractionRegex = /(\d+)\/(\d+)/g;
+    const parts: React.ReactNode[] = [];
+    let lastIndex = 0;
+    let match;
+    let fractionIdx = 0;
+
+    while ((match = fractionRegex.exec(text)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push(
+          <HandwrittenLineParser 
+            key={`t-${lastIndex}`}
+            text={text.slice(lastIndex, match.index)} 
+            seed={seed + lastIndex} 
+            thickness={penThickness} 
+            globalDelayOffset={charAccumulator + lastIndex}
+            lineIndex={0}
+          />
+        );
+      }
+      parts.push(
+        <span key={`f-${fractionIdx}`} className="inline-block">
+          {renderFraction(match[1], match[2], seed + match.index)}
+        </span>
+      );
+      lastIndex = match.index + match[0].length;
+      fractionIdx++;
+    }
+
+    if (lastIndex < text.length) {
+      parts.push(
+        <HandwrittenLineParser 
+          key={`t-${lastIndex}`}
+          text={text.slice(lastIndex)} 
+          seed={seed + lastIndex} 
+          thickness={penThickness} 
+          globalDelayOffset={charAccumulator + lastIndex}
+          lineIndex={0}
+        />
+      );
+    }
+
+    return parts.length > 0 ? parts : (
+      <HandwrittenLineParser 
+        text={text} 
+        seed={seed} 
+        thickness={penThickness} 
+        globalDelayOffset={charAccumulator}
+        lineIndex={0}
+      />
+    );
+  };
+
+  const fatigueAdjustedThickness = penThickness * (1 - pageFatigue * 0.15);
 
   return (
     <PaperSheet isScannerMode={isScannerMode}>
-      <div className="ballpoint-ink flex flex-col items-start w-full text-xl paper-content" style={{ fontWeight: penThickness > 0.7 ? 600 : 400 }}>
+      <div 
+        className="ballpoint-ink flex flex-col items-start w-full text-xl paper-content" 
+        style={{ 
+          fontWeight: penThickness > 0.7 ? 600 : 400,
+          paddingLeft: `${pageMarginLeft}px`,
+          paddingRight: `${pageMarginRight}px`,
+          paddingTop: `${pageMarginTop}px`,
+          transform: `skewX(${pageOverallSlant}deg)`,
+          gap: `${pageLineSpacing - 24}px`,
+        }}
+      >
         <div className="flex items-baseline mb-6 -ml-4">
           <span className="text-3xl font-bold font-[Caveat] text-[#0a2472] mr-4 relative">
             {solution.questionNumber}
@@ -1015,35 +1293,99 @@ const PageContent = memo(({ solution, index, globalSeed, penThickness, isScanner
         </div>
 
         <div className="w-full flex flex-col gap-1">
-          {solution.steps.map((line, lineIdx) => {
-            const isStepLabel = line.trim().startsWith('Step') || line.trim().startsWith('Sol:') || line.trim().startsWith('Given') || line.trim().startsWith('Ans');
-            const isMath = line.includes('=') || line.includes('∝');
-            if (line === "") return <div key={lineIdx} className="h-[1.5rem]"></div>;
-            let indentClass = "";
-            if (line.trim().startsWith('(') || line.trim().startsWith('1.') || line.trim().startsWith('2.')) indentClass = "pl-6";
-            else if (isMath && !isStepLabel) indentClass = "pl-12";
+          {(solution.linePlans?.length ? solution.linePlans.map((p, i) => p?.content || solution.steps[i] || '') : solution.steps).map((line, lineIdx) => {
+            const plan = getLinePlan(lineIdx);
+            const displayText = plan?.content || line;
+            const isStepLabel = plan?.isQuestionNumber || displayText.trim().startsWith('Step') || displayText.trim().startsWith('Sol:') || displayText.trim().startsWith('Given') || displayText.trim().startsWith('Ans');
+            const isMath = displayText.includes('=') || displayText.includes('∝');
+            const isHeading = plan?.isHeading || false;
+            const hasFraction = plan?.isFraction || /\d+\/\d+/.test(displayText);
+            
+            if (displayText === "" || line === "") return <div key={lineIdx} className="h-[1.5rem]"></div>;
+            
+            let indentPx = 0;
+            if (plan) {
+              indentPx = plan.indent;
+            } else {
+              if (displayText.trim().startsWith('(') || displayText.trim().startsWith('1.') || displayText.trim().startsWith('2.')) indentPx = 24;
+              else if (isMath && !isStepLabel) indentPx = 48;
+            }
+            
+            const baselineVar = plan?.baselineVariation ?? randomRange(solutionSeed + lineIdx * 100, 0, 0.5);
+            const slant = plan?.slantAngle ?? randomRange(solutionSeed + lineIdx * 101, -2, 0);
+            const pressure = plan?.pressureLevel ?? 0.8;
+            const adjustedThickness = fatigueAdjustedThickness * pressure;
+            
+            const alignment = plan?.alignment || 'left';
+            const wordSpacing = plan?.wordSpacing || 'normal';
+            const emphasis = plan?.emphasis || 'normal';
+            
+            const wordSpacingPx = wordSpacing === 'tight' ? '-0.5px' : wordSpacing === 'loose' ? '2px' : '0px';
+            const justifyClass = alignment === 'center' ? 'justify-center' : alignment === 'right' ? 'justify-end' : 'justify-start';
+            
+            const fractionContent = plan?.isFraction && plan?.fractionParts 
+              ? renderFraction(plan.fractionParts.numerator, plan.fractionParts.denominator, solutionSeed + lineIdx * 50)
+              : null;
+            
+            const textAfterFraction = plan?.isFraction && plan?.fractionParts 
+              ? (plan.fractionParts.remainingText ?? displayText.replace(new RegExp(`${plan.fractionParts.numerator}\\s*/\\s*${plan.fractionParts.denominator}`), '').trim())
+              : '';
             
             const lineComponent = (
-              <div key={lineIdx} className={`relative min-h-[2.6rem] flex items-center ${indentClass}`}>
+              <div 
+                key={lineIdx} 
+                className={`relative min-h-[2.6rem] flex items-center ${justifyClass}`}
+                style={{ 
+                  paddingLeft: `${indentPx}px`,
+                  transform: `translateY(${baselineVar}px) skewX(${slant}deg)`,
+                  wordSpacing: wordSpacingPx,
+                  textDecoration: emphasis === 'underline' ? 'underline' : 'none',
+                  fontWeight: emphasis === 'bold' || isHeading ? 600 : 'inherit',
+                }}
+              >
                 {isStepLabel && (
                   <div className="absolute left-0 bottom-2 w-12">
-                    <HandwrittenLineSVG width="100%" seed={solutionSeed + lineIdx} thickness={penThickness} />
+                    <HandwrittenLineSVG width="100%" seed={solutionSeed + lineIdx} thickness={adjustedThickness} />
                   </div>
                 )}
-                <HandwrittenLineParser 
-                  text={line} 
-                  seed={solutionSeed + 500 + (lineIdx * 77)} 
-                  thickness={penThickness} 
-                  globalDelayOffset={charAccumulator}
-                  lineIndex={lineIdx + 1}
-                />
+                {fractionContent ? (
+                  <span className="flex items-center">
+                    {fractionContent}
+                    {textAfterFraction && (
+                      <HandwrittenLineParser 
+                        text={textAfterFraction} 
+                        seed={solutionSeed + 500 + (lineIdx * 77)} 
+                        thickness={adjustedThickness} 
+                        globalDelayOffset={charAccumulator}
+                        lineIndex={lineIdx + 1}
+                      />
+                    )}
+                  </span>
+                ) : hasFraction ? (
+                  processLineWithFractions(displayText, solutionSeed + 500 + (lineIdx * 77))
+                ) : (
+                  <HandwrittenLineParser 
+                    text={displayText} 
+                    seed={solutionSeed + 500 + (lineIdx * 77)} 
+                    thickness={adjustedThickness} 
+                    globalDelayOffset={charAccumulator}
+                    lineIndex={lineIdx + 1}
+                  />
+                )}
               </div>
             );
             
-            charAccumulator += line.length + 5;
+            charAccumulator += displayText.length + 5;
             return lineComponent;
           })}
         </div>
+        
+        {hasAIPlan && (
+          <div className="mt-4 flex items-center gap-1.5 text-xs opacity-30">
+            <Brain size={12} />
+            <span>AI-planned layout</span>
+          </div>
+        )}
       </div>
     </PaperSheet>
   );
@@ -1085,6 +1427,9 @@ const ResultsScreen: React.FC<{ solutions: QuestionSolution[], onReset: () => vo
   const listRef = useListRef(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerHeight, setContainerHeight] = useState(800);
+
+  const hasAIPlan = useMemo(() => solutions.some(sol => sol.linePlans?.length || sol.pagePlan), [solutions]);
+  const aiPlannedPages = useMemo(() => solutions.filter(sol => sol.linePlans?.length || sol.pagePlan).length, [solutions]);
 
   useEffect(() => {
     const updateHeight = () => {
@@ -1155,6 +1500,15 @@ const ResultsScreen: React.FC<{ solutions: QuestionSolution[], onReset: () => vo
           </div>
 
           <div className="flex items-center gap-3">
+            {hasAIPlan && (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg" style={{ backgroundColor: `${COLORS.primaryGreen}20` }}>
+                <Brain size={14} style={{ color: COLORS.primaryGreen }} />
+                <span className="text-xs font-medium" style={{ color: COLORS.primaryGreen }}>
+                  AI Layout ({aiPlannedPages} pages)
+                </span>
+              </div>
+            )}
+            
             <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: COLORS.bgDark }}>
               <Search size={16} style={{ color: COLORS.textSecondary }} />
               <input
@@ -1247,12 +1601,23 @@ const App: React.FC = () => {
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null);
   const [previewData, setPreviewData] = useState<PreviewData | null>(null);
   const [solutions, setSolutions] = useState<QuestionSolution[]>([]);
+  const [apiKey, setApiKey] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('gemini_api_key') || '';
+    }
+    return '';
+  });
   const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
     setIsClient(true);
     return () => { terminateWorker(); };
   }, []);
+
+  const handleApiKeyChange = (key: string) => {
+    setApiKey(key);
+    localStorage.setItem('gemini_api_key', key);
+  };
 
   if (!isClient) return null;
 
@@ -1267,6 +1632,8 @@ const App: React.FC = () => {
       {appState === 'preview' && uploadedFile && (
         <PreviewScreen 
           file={uploadedFile} 
+          apiKey={apiKey}
+          onApiKeyChange={handleApiKeyChange}
           onConvert={(preview) => {
             setPreviewData(preview);
             setAppState('processing');
@@ -1281,6 +1648,7 @@ const App: React.FC = () => {
         <ProcessingScreen 
           previewData={previewData} 
           fileName={uploadedFile?.name || 'Document'}
+          apiKey={apiKey}
           onComplete={(sols) => {
             setSolutions(sols);
             setAppState('results');

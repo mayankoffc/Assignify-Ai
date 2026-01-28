@@ -56,4 +56,44 @@ export interface QuestionSolution {
   questionText: string;
   steps: string[];
   diagram?: string;
+  linePlans?: LinePlan[];
+  pagePlan?: PagePlan;
+}
+
+export interface LinePlan {
+  lineNumber: number;
+  content: string;
+  indent: number;
+  isQuestionNumber: boolean;
+  isFraction: boolean;
+  fractionParts?: { numerator: string; denominator: string; remainingText?: string };
+  isHeading: boolean;
+  alignment: 'left' | 'center' | 'right';
+  emphasis: 'normal' | 'bold' | 'underline';
+  wordSpacing: 'tight' | 'normal' | 'loose';
+  baselineVariation: number;
+  slantAngle: number;
+  pressureLevel: number;
+}
+
+export interface PagePlan {
+  pageNumber: number;
+  lines: LinePlan[];
+  marginLeft: number;
+  marginRight: number;
+  marginTop: number;
+  lineSpacing: number;
+  overallSlant: number;
+  writingSpeed: 'slow' | 'medium' | 'fast';
+  fatigueLevel: number;
+}
+
+export interface WritingPlan {
+  pages: PagePlan[];
+  globalStyle: {
+    consistency: number;
+    neatness: number;
+    speedVariation: number;
+    personalQuirks: string[];
+  };
 }

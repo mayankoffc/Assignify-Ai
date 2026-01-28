@@ -51,9 +51,32 @@ The app uses a sophisticated handwriting simulation:
 - AllowedHosts: true (for proxy compatibility)
 
 ## Recent Changes (January 27, 2026)
-- **Completely Offline Operation**
-  - Removed all external AI dependencies (Gemini, OpenAI)
-  - Implemented Tesseract.js OCR for client-side text extraction
+- **AI Layout Planning (Optional)**
+  - Gemini 2.5 Flash for intelligent layout planning (not solution generation)
+  - Plans: line breaks, word spacing, Q/A positioning, fractions, margins
+  - Single API call per document for minimal usage
+  - Fallback to smart local algorithm if no API key
+  - API key stored locally in browser (localStorage)
+  - "AI-planned layout" indicator on pages when active
+
+- **Professional Scanning Animation**
+  - Page-by-page scanning visualization
+  - Moving scan line with glow effects
+  - Character extraction animation
+  - Corner markers and progress dots
+  - Three phases: Scanning → AI Planning → Writing
+
+- **Enhanced AI-Guided Rendering**
+  - Page-level: margins, line spacing, overall slant, fatigue simulation
+  - Line-level: indent, baseline variation, slant angle, pressure
+  - Alignment (left/center/right), word spacing (tight/normal/loose)
+  - Emphasis (bold/underline), heading detection
+  - Vertical fraction rendering from AI plan
+
+- **Completely Offline Operation (Default)**
+  - Works without API key using smart local algorithms
+  - PDF.js worker bundled locally (no CDN)
+  - Tesseract.js OCR for client-side text extraction
   - Works 100% offline after page load
 
 - **Professional UI Redesign**
