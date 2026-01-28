@@ -6,11 +6,19 @@ export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
     return {
       server: {
-        port: 5000,
+        port: 5173,
         host: '0.0.0.0',
-        allowedHosts: true,
+        strictPort: true,
         hmr: {
+          // Enable HMR for Codespaces
           clientPort: 443,
+          protocol: 'wss',
+        },
+        // Allow access from Codespaces forwarded ports
+        cors: true,
+        // Configure headers for Codespaces
+        headers: {
+          'Access-Control-Allow-Origin': '*',
         },
       },
       plugins: [react()],
