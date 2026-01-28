@@ -1597,6 +1597,18 @@ const ResultsScreen: React.FC<{ solutions: QuestionSolution[], onReset: () => vo
 };
 
 const App: React.FC = () => {
+  useEffect(() => {
+    const envKey = import.meta.env.VITE_API_KEY || import.meta.env.GOOGLE_API_KEY;
+    if (envKey) {
+      aiPlanningService.initialize(envKey);
+      setApiKey(envKey);
+    } else {
+      const storedKey = localStorage.getItem('assignify_api_key');
+      if (storedKey) aiPlanningService.initialize(storedKey);
+    }
+  }, []);
+
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [appState, setAppState] = useState<AppState>('upload');
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null);
   const [previewData, setPreviewData] = useState<PreviewData | null>(null);
