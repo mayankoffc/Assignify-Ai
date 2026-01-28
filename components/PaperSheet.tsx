@@ -20,28 +20,27 @@ const PaperSheetComponent: React.FC<PaperSheetProps> = ({ children, className = 
         }}
       >
         {!isScannerMode && (
-           <div className="absolute inset-0 opacity-20 pointer-events-none z-0"
+           <div className="absolute inset-0 opacity-40 pointer-events-none z-0"
               style={{
-                  backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.1'/%3E%3C/svg%3E")`,
+                  backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.15'/%3E%3C/svg%3E")`,
+                  mixBlendMode: 'multiply'
               }}
            />
         )}
         
-        {isScannerMode && (
-            <div className="absolute inset-0 pointer-events-none z-50 opacity-40 mix-blend-multiply"
-                 style={{
-                     backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")`,
-                     filter: 'contrast(150%)'
-                 }}
-            />
-        )}
+        <div className="absolute inset-0 pointer-events-none z-0 opacity-10"
+             style={{
+               backgroundImage: `radial-gradient(#000 0.5px, transparent 0.5px)`,
+               backgroundSize: '20px 20px',
+             }}>
+        </div>
 
         <div className="absolute inset-0 pointer-events-none z-0"
              style={{
-               backgroundImage: 'linear-gradient(to bottom, transparent 2.35rem, #a1aebf 2.35rem, #a1aebf 2.4rem, transparent 2.4rem)',
+               backgroundImage: 'linear-gradient(to bottom, transparent 2.35rem, #8a96a8 2.35rem, #8a96a8 2.4rem, transparent 2.4rem)',
                backgroundSize: '100% 2.4rem', 
                backgroundPosition: '0 4rem', 
-               opacity: isScannerMode ? 0.8 : 0.5
+               opacity: isScannerMode ? 0.9 : 0.6
              }}>
         </div>
 

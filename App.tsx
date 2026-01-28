@@ -1,13 +1,15 @@
+import { motion, AnimatePresence } from 'framer-motion';
 import React, { useState, useEffect, useMemo, useRef, useCallback, memo } from 'react';
 import { List, useListRef } from 'react-window';
 import type { CSSProperties } from 'react';
 import { PaperSheet } from './components/PaperSheet';
 import { FALLBACK_SOLUTIONS } from './constants';
 import { 
-  RefreshCcw, Camera, Eye, PenTool, Minus, Plus, UploadCloud, FileText, Loader, 
+  RotateCcw, Scan, Eye, Pen, Minus, Plus, Upload, FileText, Loader2, 
   ArrowLeft, Sparkles, ChevronLeft, ChevronRight, Search, ZoomIn, ZoomOut, 
-  Keyboard, X, Menu, User, Home, Settings, HelpCircle, FileUp, Type, 
-  Layers, CheckCircle, Clock, Zap, BarChart3, Download, Wand2, Image, Hash, FileDigit, Brain
+  Keyboard, X, Menu, User, LayoutDashboard, Sliders, CircleHelp, FolderUp, TypeOutline, 
+  Layers2, CheckCircle2, History, Bolt, BarChart2, ArrowDownToLine, Wand, ImageIcon, Hash, FileDigit, BrainCircuit,
+  PanelLeft, Grid3X3, ScanText, FileOutput, Pencil
 } from 'lucide-react';
 import { AppState, UploadedFile, QuestionSolution, PreviewData, ExtractionStats, LinePlan, WritingPlan, PagePlan } from './types';
 import { extractPreviewData, processPreviewToSolutions, terminateWorker, OCRProgress } from './services/ocrService';
@@ -15,15 +17,20 @@ import { aiPlanningService } from './services/aiPlanningService';
 import { ScanningAnimation } from './components/ScanningAnimation';
 
 const COLORS = {
-  bgDark: '#2F313A',
-  bgCard: '#3A3D47',
-  border: '#4A4E5A',
-  primaryGreen: '#6ED3B3',
-  primaryGreenBright: '#7FD39A',
-  accentBlue: '#2F6FE4',
-  accentTeal: '#2E8CA4',
-  textPrimary: '#FFFFFF',
-  textSecondary: '#B0B5C0',
+  bgDark: '#0F0F12', // Deep charcoal
+  bgCard: '#18181B', // Zinc dark
+  bgInput: '#1F1F24',
+  border: '#27272A',
+  primaryGreen: '#71717A', // Neutral zinc accent
+  primaryGreenBright: '#A1A1AA',
+  accentBlue: '#52525B', // Muted slate
+  accentTeal: '#3F3F46',
+  textPrimary: '#FAFAFA',
+  textSecondary: '#71717A',
+  danger: '#DC2626',
+  success: '#16A34A',
+  accent: '#E4E4E7', // Light accent for highlights
+  cardHover: '#1C1C21',
 };
 
 const seededRandom = (seed: number) => {
@@ -153,9 +160,12 @@ const generateCharStyle = (
     ? Math.sin((wordContext?.charIndex || 0) * lineContext.lineWaveFrequency) * lineContext.lineWaveAmplitude
     : 0;
   
+  // Advanced Fatigue: Baseline drifts slightly over the line
+  const fatigueDrift = wordContext ? (wordContext.charIndex / Math.max(wordContext.wordLength, 10)) * (gaussianRandom(seed + 99, 0, 0.5)) : 0;
+  
   const baselineDrift = gaussianRandom(seed + 100, 0, 0.8);
   const numericYDrift = numericStyle ? numericStyle.yDrift : 0;
-  const yOffset = baselineWave + baselineDrift + numericYDrift + randomRange(seed + 1, -0.3, 0.3);
+  const yOffset = baselineWave + baselineDrift + fatigueDrift + numericYDrift + randomRange(seed + 1, -0.3, 0.3);
   
   const kerningVariance = gaussianRandom(seed + 200, 0, 0.5);
   const positionInWord = wordContext ? wordContext.charIndex / Math.max(wordContext.wordLength, 1) : 0.5;
@@ -479,57 +489,114 @@ const HandwrittenLineParser: React.FC<{ text: string; seed: number; thickness: n
 };
 
 const Sidebar: React.FC<{ isOpen: boolean; onClose: () => void; currentTool: string; onToolChange: (tool: string) => void }> = ({ isOpen, onClose, currentTool, onToolChange }) => {
+  const [history, setHistory] = useState<any[]>([]);
+  
+  useEffect(() => {
+    const saved = localStorage.getItem('assignify_history');
+    if (saved) setHistory(JSON.parse(saved));
+  }, [isOpen]);
+
   const tools = [
-    { id: 'handwriting', icon: Type, label: 'Handwriting Generator' },
-    { id: 'dashboard', icon: Home, label: 'Dashboard' },
-    { id: 'history', icon: Clock, label: 'History' },
-    { id: 'settings', icon: Settings, label: 'Settings' },
-    { id: 'help', icon: HelpCircle, label: 'Help & Support' },
+    { id: 'handwriting', icon: Pencil, label: 'Generator' },
+    { id: 'history', icon: History, label: 'Recent' },
+    { id: 'settings', icon: Sliders, label: 'Settings' },
   ];
 
   return (
     <>
-      {isOpen && <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={onClose} />}
-      <aside className={`fixed left-0 top-0 h-full w-64 z-50 transform transition-transform duration-300 ${isOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 lg:static lg:z-auto`}
-        style={{ backgroundColor: COLORS.bgCard }}
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden" 
+            onClick={onClose} 
+          />
+        )}
+      </AnimatePresence>
+      
+      <aside className={`fixed left-0 top-0 h-full w-72 z-50 transform transition-all duration-500 ease-out ${isOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 lg:static lg:z-auto border-r`}
+        style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }}
       >
-        <div className="p-6 border-b" style={{ borderColor: COLORS.border }}>
+        <div className="p-6 sm:p-8 border-b" style={{ borderColor: COLORS.border }}>
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${COLORS.primaryGreen}, ${COLORS.accentBlue})` }}>
-              <Type size={24} className="text-white" />
+            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center" 
+                 style={{ backgroundColor: COLORS.accent }}>
+              <Pencil size={20} className="text-zinc-900" />
             </div>
             <div>
-              <h1 className="font-bold text-lg" style={{ color: COLORS.textPrimary }}>Assignify</h1>
-              <p className="text-xs" style={{ color: COLORS.textSecondary }}>Handwriting Generator</p>
+              <h1 className="font-semibold text-base sm:text-lg tracking-tight" style={{ color: COLORS.textPrimary }}>Assignify</h1>
+              <p className="text-[10px] font-medium tracking-wide" style={{ color: COLORS.textSecondary }}>Professional Edition</p>
             </div>
           </div>
         </div>
 
-        <nav className="p-4 space-y-2">
+        <nav className="p-4 sm:p-6 space-y-1">
           {tools.map(tool => (
             <button
               key={tool.id}
-              onClick={() => { onToolChange(tool.id); onClose(); }}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${currentTool === tool.id ? 'text-white' : ''}`}
+              onClick={() => { onToolChange(tool.id); if(tool.id !== 'history') onClose(); }}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all group ${currentTool === tool.id ? '' : 'hover:bg-zinc-800/50'}`}
               style={{ 
-                backgroundColor: currentTool === tool.id ? COLORS.primaryGreen : 'transparent',
-                color: currentTool === tool.id ? '#fff' : COLORS.textSecondary,
+                backgroundColor: currentTool === tool.id ? COLORS.cardHover : 'transparent',
+                color: currentTool === tool.id ? COLORS.accent : COLORS.textSecondary,
+                borderLeft: currentTool === tool.id ? `2px solid ${COLORS.accent}` : '2px solid transparent',
               }}
             >
-              <tool.icon size={20} />
-              <span className="font-medium">{tool.label}</span>
+              <div className="flex items-center gap-3">
+                <tool.icon size={18} strokeWidth={1.5} />
+                <span className="font-medium text-sm">{tool.label}</span>
+              </div>
+              {tool.id === 'history' && history.length > 0 && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-black/20 font-bold">
+                  {history.length}
+                </span>
+              )}
             </button>
           ))}
         </nav>
 
-        <div className="absolute bottom-0 left-0 right-0 p-4 border-t" style={{ borderColor: COLORS.border }}>
-          <div className="flex items-center gap-3 px-4 py-3 rounded-xl" style={{ backgroundColor: COLORS.bgDark }}>
-            <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${COLORS.accentTeal}, ${COLORS.accentBlue})` }}>
-              <User size={20} className="text-white" />
+        {currentTool === 'history' && (
+          <div className="px-6 py-2 h-[400px] overflow-y-auto space-y-3 custom-scrollbar">
+            <p className="text-[10px] font-black uppercase tracking-widest mb-4 opacity-40 px-2">Recently Generated</p>
+            {history.map((item) => (
+              <div key={item.id} className="p-3 rounded-xl bg-black/20 border border-white/5 hover:border-white/20 transition-all cursor-pointer group">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-10 rounded bg-white/10 flex items-center justify-center overflow-hidden">
+                    {item.thumbnail ? (
+                      <img src={item.thumbnail} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" />
+                    ) : (
+                      <FileText size={14} className="opacity-40" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold truncate" style={{ color: COLORS.textPrimary }}>{item.name}</p>
+                    <p className="text-[10px] opacity-50" style={{ color: COLORS.textSecondary }}>
+                      {new Date(item.date).toLocaleDateString()}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {history.length === 0 && (
+              <div className="text-center py-8 opacity-40">
+                <History className="mx-auto mb-2" size={28} strokeWidth={1.5} />
+                <p className="text-xs font-medium">No history yet</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="absolute bottom-0 left-0 right-0 p-4 sm:p-6 border-t" style={{ borderColor: COLORS.border }}>
+          <div className="flex items-center gap-3 p-3 rounded-xl" style={{ backgroundColor: COLORS.bgDark }}>
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center" 
+                 style={{ backgroundColor: COLORS.accent }}>
+              <User size={18} className="text-zinc-900" strokeWidth={1.5} />
             </div>
             <div>
-              <p className="font-medium text-sm" style={{ color: COLORS.textPrimary }}>Guest User</p>
-              <p className="text-xs" style={{ color: COLORS.textSecondary }}>Free Plan</p>
+              <p className="font-medium text-sm" style={{ color: COLORS.textPrimary }}>Pro Account</p>
+              <p className="text-[10px]" style={{ color: COLORS.textSecondary }}>Active</p>
             </div>
           </div>
         </div>
@@ -539,16 +606,16 @@ const Sidebar: React.FC<{ isOpen: boolean; onClose: () => void; currentTool: str
 };
 
 const Header: React.FC<{ onMenuClick: () => void; title: string }> = ({ onMenuClick, title }) => (
-  <header className="h-16 flex items-center justify-between px-6 border-b" style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }}>
-    <div className="flex items-center gap-4">
-      <button onClick={onMenuClick} className="lg:hidden p-2 rounded-lg transition-colors" style={{ color: COLORS.textSecondary }}>
-        <Menu size={24} />
-      </button>
-      <h2 className="text-xl font-semibold" style={{ color: COLORS.textPrimary }}>{title}</h2>
-    </div>
+  <header className="h-14 sm:h-16 flex items-center justify-between px-4 sm:px-6 border-b" style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }}>
     <div className="flex items-center gap-3">
-      <button className="p-2 rounded-lg transition-colors" style={{ color: COLORS.textSecondary }}>
-        <Settings size={20} />
+      <button onClick={onMenuClick} className="lg:hidden p-2 rounded-lg transition-colors" style={{ color: COLORS.textSecondary }}>
+        <PanelLeft size={20} strokeWidth={1.5} />
+      </button>
+      <h2 className="text-base sm:text-lg font-medium" style={{ color: COLORS.textPrimary }}>{title}</h2>
+    </div>
+    <div className="flex items-center gap-2">
+      <button className="p-2 rounded-lg transition-colors hover:bg-zinc-800/50" style={{ color: COLORS.textSecondary }}>
+        <Sliders size={18} strokeWidth={1.5} />
       </button>
     </div>
   </header>
@@ -582,77 +649,98 @@ const UploadScreen: React.FC<{ onUpload: (file: UploadedFile) => void }> = ({ on
       <div className="flex-1 flex flex-col">
         <Header onMenuClick={() => setSidebarOpen(true)} title="Handwriting Generator" />
         
-        <main className="flex-1 p-6 overflow-auto">
-          <div className="max-w-4xl mx-auto space-y-6">
-            <div className="rounded-2xl p-6" style={{ backgroundColor: COLORS.bgCard }}>
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${COLORS.primaryGreen}, ${COLORS.accentBlue})` }}>
-                  <FileUp size={24} className="text-white" />
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-auto">
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+            className="max-w-4xl mx-auto space-y-6"
+          >
+            <div className="rounded-2xl sm:rounded-3xl p-5 sm:p-8 border" 
+                 style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }}>
+              <div className="flex items-center gap-4 mb-6 sm:mb-8">
+                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl flex items-center justify-center" 
+                     style={{ backgroundColor: COLORS.accent }}>
+                  <FolderUp size={24} className="text-zinc-900" strokeWidth={1.5} />
                 </div>
                 <div>
-                  <h3 className="text-lg font-semibold" style={{ color: COLORS.textPrimary }}>Upload Document</h3>
-                  <p className="text-sm" style={{ color: COLORS.textSecondary }}>Upload your assignment PDF or image to convert to handwriting</p>
+                  <h3 className="text-xl sm:text-2xl font-semibold tracking-tight" style={{ color: COLORS.textPrimary }}>Upload Document</h3>
+                  <p className="text-xs sm:text-sm" style={{ color: COLORS.textSecondary }}>PDF, Images, or scanned documents</p>
                 </div>
               </div>
 
-              <div 
+              <motion.div 
+                whileHover={{ scale: 1.005 }}
+                whileTap={{ scale: 0.995 }}
                 onDragEnter={() => setDragActive(true)}
                 onDragLeave={() => setDragActive(false)}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => { e.preventDefault(); setDragActive(false); handleFiles(e.dataTransfer.files); }}
                 onClick={() => !isLoading && inputRef.current?.click()}
-                className={`border-2 border-dashed rounded-2xl h-64 flex flex-col items-center justify-center cursor-pointer transition-all duration-300 relative overflow-hidden`}
+                className={`border border-dashed rounded-xl sm:rounded-2xl h-48 sm:h-64 flex flex-col items-center justify-center cursor-pointer transition-all duration-300 relative group`}
                 style={{ 
-                  borderColor: dragActive ? COLORS.primaryGreen : COLORS.border,
-                  backgroundColor: dragActive ? `${COLORS.primaryGreen}10` : COLORS.bgDark,
+                  borderColor: dragActive ? COLORS.accent : COLORS.border,
+                  backgroundColor: dragActive ? `${COLORS.accent}08` : COLORS.bgDark,
                 }}
               >
                 {isLoading ? (
                   <div className="text-center z-10">
-                    <div className="w-20 h-20 rounded-2xl mx-auto mb-4 flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${COLORS.primaryGreen}, ${COLORS.accentBlue})` }}>
-                      <Loader className="animate-spin text-white" size={40} />
+                    <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl mx-auto mb-4 flex items-center justify-center" 
+                         style={{ backgroundColor: COLORS.bgCard }}>
+                      <Loader2 className="animate-spin" size={32} style={{ color: COLORS.textSecondary }} strokeWidth={1.5} />
                     </div>
-                    <p className="text-lg font-medium mb-2" style={{ color: COLORS.textPrimary }}>Loading Document...</p>
-                    <p className="text-sm" style={{ color: COLORS.textSecondary }}>Please wait</p>
+                    <p className="text-lg sm:text-xl font-medium mb-1" style={{ color: COLORS.textPrimary }}>Processing...</p>
+                    <p className="text-xs" style={{ color: COLORS.textSecondary }}>Analyzing document</p>
                   </div>
                 ) : (
-                  <div className="text-center z-10">
-                    <div className="w-20 h-20 rounded-2xl mx-auto mb-4 flex items-center justify-center" style={{ backgroundColor: `${COLORS.primaryGreen}15` }}>
-                      <UploadCloud size={40} style={{ color: COLORS.primaryGreen }} />
+                  <div className="text-center z-10 space-y-3 px-4">
+                    <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl mx-auto flex items-center justify-center transition-transform group-hover:scale-105" 
+                         style={{ backgroundColor: COLORS.bgCard }}>
+                      <Upload size={24} style={{ color: COLORS.textSecondary }} strokeWidth={1.5} />
                     </div>
-                    <p className="text-lg font-medium mb-2" style={{ color: COLORS.textPrimary }}>
-                      {dragActive ? 'Drop your file here' : 'Drag & drop your file here'}
-                    </p>
-                    <p className="text-sm mb-4" style={{ color: COLORS.textSecondary }}>or click to browse</p>
-                    <div className="flex gap-2 justify-center">
-                      {['PDF', 'JPG', 'PNG', 'WEBP'].map(ext => (
-                        <span key={ext} className="px-3 py-1 rounded-full text-xs font-medium" style={{ backgroundColor: COLORS.bgCard, color: COLORS.textSecondary }}>
-                          {ext}
+                    <div>
+                      <p className="text-base sm:text-lg font-medium" style={{ color: COLORS.textPrimary }}>
+                        {dragActive ? 'Release to upload' : 'Drop files here'}
+                      </p>
+                      <p className="text-xs mt-1" style={{ color: COLORS.textSecondary }}>or click to browse</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2 justify-center pt-2">
+                      {['PDF', 'PNG', 'JPG'].map(tag => (
+                        <span key={tag} className="px-2.5 py-1 rounded-md text-[10px] font-medium" style={{ backgroundColor: COLORS.bgCard, color: COLORS.textSecondary }}>
+                          {tag}
                         </span>
                       ))}
                     </div>
                   </div>
                 )}
                 <input type="file" ref={inputRef} className="hidden" accept=".pdf,image/*" onChange={(e) => handleFiles(e.target.files)} />
-              </div>
+              </motion.div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
               {[
-                { icon: Zap, title: 'Fast Processing', desc: 'OCR powered text extraction' },
-                { icon: Layers, title: 'Natural Handwriting', desc: 'Realistic pen stroke simulation' },
-                { icon: Download, title: 'Export Ready', desc: 'Print or save as PDF' },
+                { icon: ScanText, title: 'Smart OCR', desc: 'High accuracy text extraction' },
+                { icon: Pencil, title: 'Natural Writing', desc: 'Realistic handwriting styles' },
+                { icon: FileOutput, title: 'Export Ready', desc: 'Print-ready A4 format' },
               ].map((item, i) => (
-                <div key={i} className="rounded-xl p-5" style={{ backgroundColor: COLORS.bgCard }}>
-                  <div className="w-10 h-10 rounded-lg mb-3 flex items-center justify-center" style={{ backgroundColor: `${COLORS.primaryGreen}15` }}>
-                    <item.icon size={20} style={{ color: COLORS.primaryGreen }} />
+                <motion.div 
+                  key={i} 
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.05 * i }}
+                  className="rounded-xl p-4 sm:p-5 border transition-colors hover:border-zinc-600" 
+                  style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }}
+                >
+                  <div className="w-10 h-10 rounded-lg mb-3 flex items-center justify-center" 
+                       style={{ backgroundColor: COLORS.bgDark }}>
+                    <item.icon size={18} style={{ color: COLORS.textSecondary }} strokeWidth={1.5} />
                   </div>
-                  <h4 className="font-semibold mb-1" style={{ color: COLORS.textPrimary }}>{item.title}</h4>
-                  <p className="text-sm" style={{ color: COLORS.textSecondary }}>{item.desc}</p>
-                </div>
+                  <h4 className="text-sm font-medium mb-1" style={{ color: COLORS.textPrimary }}>{item.title}</h4>
+                  <p className="text-xs" style={{ color: COLORS.textSecondary }}>{item.desc}</p>
+                </motion.div>
               ))}
             </div>
-          </div>
+          </motion.div>
         </main>
       </div>
     </div>
@@ -707,30 +795,30 @@ const PreviewScreen: React.FC<{
       <div className="flex-1 flex flex-col">
         <Header onMenuClick={() => setSidebarOpen(true)} title="Document Preview" />
         
-        <main className="flex-1 p-6 overflow-auto">
-          <div className="max-w-5xl mx-auto space-y-6">
-            <button onClick={onBack} className="flex items-center gap-2 px-4 py-2 rounded-xl transition-all" style={{ backgroundColor: COLORS.bgCard, color: COLORS.textSecondary }}>
-              <ArrowLeft size={18} /> Back to Upload
+        <main className="flex-1 p-4 sm:p-6 overflow-auto">
+          <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6">
+            <button onClick={onBack} className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors hover:bg-zinc-800/50" style={{ color: COLORS.textSecondary }}>
+              <ArrowLeft size={16} strokeWidth={1.5} /> Back
             </button>
 
             {isExtracting ? (
-              <div className="rounded-2xl p-8" style={{ backgroundColor: COLORS.bgCard }}>
+              <div className="rounded-xl sm:rounded-2xl p-6 sm:p-8" style={{ backgroundColor: COLORS.bgCard }}>
                 <div className="text-center">
-                  <div className="w-24 h-24 rounded-2xl mx-auto mb-6 flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${COLORS.primaryGreen}, ${COLORS.accentBlue})` }}>
-                    <Loader className="animate-spin text-white" size={48} />
+                  <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl mx-auto mb-4 sm:mb-6 flex items-center justify-center" style={{ backgroundColor: COLORS.bgDark }}>
+                    <Loader2 className="animate-spin" size={32} style={{ color: COLORS.textSecondary }} strokeWidth={1.5} />
                   </div>
-                  <h3 className="text-2xl font-bold mb-2" style={{ color: COLORS.textPrimary }}>Extracting Content</h3>
-                  <p className="mb-6" style={{ color: COLORS.textSecondary }}>{extractStatus}</p>
+                  <h3 className="text-lg sm:text-xl font-medium mb-2" style={{ color: COLORS.textPrimary }}>Extracting Content</h3>
+                  <p className="text-sm mb-4 sm:mb-6" style={{ color: COLORS.textSecondary }}>{extractStatus}</p>
                   
-                  <div className="max-w-md mx-auto">
-                    <div className="flex justify-between text-sm mb-2">
+                  <div className="max-w-sm mx-auto">
+                    <div className="flex justify-between text-xs mb-2">
                       <span style={{ color: COLORS.textSecondary }}>Progress</span>
-                      <span className="font-bold" style={{ color: COLORS.primaryGreen }}>{extractProgress}%</span>
+                      <span className="font-medium" style={{ color: COLORS.textPrimary }}>{extractProgress}%</span>
                     </div>
-                    <div className="h-3 rounded-full overflow-hidden" style={{ backgroundColor: COLORS.bgDark }}>
+                    <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: COLORS.bgDark }}>
                       <div 
                         className="h-full transition-all duration-300 rounded-full"
-                        style={{ width: `${extractProgress}%`, background: `linear-gradient(90deg, ${COLORS.primaryGreen}, ${COLORS.accentBlue})` }}
+                        style={{ width: `${extractProgress}%`, backgroundColor: COLORS.accent }}
                       />
                     </div>
                   </div>
@@ -738,48 +826,48 @@ const PreviewScreen: React.FC<{
               </div>
             ) : previewData && (
               <>
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  <div className="rounded-2xl p-6 flex flex-col items-center" style={{ backgroundColor: COLORS.bgCard }}>
-                    <h4 className="text-sm font-medium mb-4" style={{ color: COLORS.textSecondary }}>Document Preview</h4>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                  <div className="rounded-xl sm:rounded-2xl p-4 sm:p-6 flex flex-col items-center" style={{ backgroundColor: COLORS.bgCard }}>
+                    <h4 className="text-xs font-medium mb-3" style={{ color: COLORS.textSecondary }}>Preview</h4>
                     {previewData.thumbnail ? (
                       <img 
                         src={previewData.thumbnail} 
                         alt="Document preview" 
-                        className="w-full max-w-[200px] rounded-xl border-2 shadow-lg"
+                        className="w-full max-w-[160px] rounded-lg border"
                         style={{ borderColor: COLORS.border }}
                       />
                     ) : (
-                      <div className="w-full max-w-[200px] h-[280px] rounded-xl flex items-center justify-center" style={{ backgroundColor: COLORS.bgDark }}>
-                        <FileText size={48} style={{ color: COLORS.textSecondary }} />
+                      <div className="w-full max-w-[160px] h-[200px] rounded-lg flex items-center justify-center" style={{ backgroundColor: COLORS.bgDark }}>
+                        <FileText size={32} style={{ color: COLORS.textSecondary }} strokeWidth={1.5} />
                       </div>
                     )}
-                    <p className="mt-4 text-sm font-medium truncate max-w-full" style={{ color: COLORS.textPrimary }}>{file.name}</p>
+                    <p className="mt-3 text-xs font-medium truncate max-w-full" style={{ color: COLORS.textPrimary }}>{file.name}</p>
                   </div>
 
-                  <div className="lg:col-span-2 rounded-2xl p-6" style={{ backgroundColor: COLORS.bgCard }}>
-                    <h4 className="text-sm font-medium mb-4" style={{ color: COLORS.textSecondary }}>Extraction Statistics</h4>
+                  <div className="lg:col-span-2 rounded-xl sm:rounded-2xl p-4 sm:p-6" style={{ backgroundColor: COLORS.bgCard }}>
+                    <h4 className="text-xs font-medium mb-4" style={{ color: COLORS.textSecondary }}>Statistics</h4>
                     
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                       {[
-                        { icon: Type, label: 'Characters', value: formatNumber(previewData.stats.totalCharacters), color: COLORS.primaryGreen },
-                        { icon: FileText, label: 'Words', value: formatNumber(previewData.stats.totalWords), color: COLORS.accentBlue },
-                        { icon: Hash, label: 'Numbers', value: formatNumber(previewData.stats.totalNumbers), color: '#F59E0B' },
-                        { icon: Layers, label: 'Pages', value: String(previewData.stats.totalPages), color: '#EC4899' },
+                        { icon: TypeOutline, label: 'Characters', value: formatNumber(previewData.stats.totalCharacters) },
+                        { icon: FileText, label: 'Words', value: formatNumber(previewData.stats.totalWords) },
+                        { icon: Hash, label: 'Numbers', value: formatNumber(previewData.stats.totalNumbers) },
+                        { icon: Layers2, label: 'Pages', value: String(previewData.stats.totalPages) },
                       ].map((stat, i) => (
-                        <div key={i} className="p-4 rounded-xl text-center" style={{ backgroundColor: COLORS.bgDark }}>
-                          <stat.icon size={20} className="mx-auto mb-2" style={{ color: stat.color }} />
-                          <p className="text-2xl font-bold" style={{ color: COLORS.textPrimary }}>{stat.value}</p>
-                          <p className="text-xs" style={{ color: COLORS.textSecondary }}>{stat.label}</p>
+                        <div key={i} className="p-3 rounded-lg text-center" style={{ backgroundColor: COLORS.bgDark }}>
+                          <stat.icon size={16} className="mx-auto mb-2" style={{ color: COLORS.textSecondary }} strokeWidth={1.5} />
+                          <p className="text-lg font-medium" style={{ color: COLORS.textPrimary }}>{stat.value}</p>
+                          <p className="text-[10px]" style={{ color: COLORS.textSecondary }}>{stat.label}</p>
                         </div>
                       ))}
                     </div>
 
                     {previewData.stats.extractedImages.length > 0 && (
-                      <div className="mb-4">
-                        <div className="flex items-center gap-2 mb-3">
-                          <Image size={16} style={{ color: COLORS.primaryGreen }} />
-                          <span className="text-sm font-medium" style={{ color: COLORS.textSecondary }}>
-                            {previewData.stats.extractedImages.length} Image{previewData.stats.extractedImages.length > 1 ? 's' : ''} Detected
+                      <div className="mt-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <ImageIcon size={14} style={{ color: COLORS.textSecondary }} strokeWidth={1.5} />
+                          <span className="text-xs" style={{ color: COLORS.textSecondary }}>
+                            {previewData.stats.extractedImages.length} image{previewData.stats.extractedImages.length > 1 ? 's' : ''}
                           </span>
                         </div>
                         <div className="flex gap-2 overflow-x-auto pb-2">
@@ -788,13 +876,13 @@ const PreviewScreen: React.FC<{
                               key={i} 
                               src={img.dataUrl} 
                               alt={`Extracted ${i + 1}`}
-                              className="h-16 w-16 object-cover rounded-lg border"
+                              className="h-12 w-12 object-cover rounded-md border"
                               style={{ borderColor: COLORS.border }}
                             />
                           ))}
                           {previewData.stats.extractedImages.length > 5 && (
-                            <div className="h-16 w-16 rounded-lg flex items-center justify-center" style={{ backgroundColor: COLORS.bgDark }}>
-                              <span className="text-sm font-medium" style={{ color: COLORS.textSecondary }}>
+                            <div className="h-12 w-12 rounded-md flex items-center justify-center" style={{ backgroundColor: COLORS.bgDark }}>
+                              <span className="text-xs" style={{ color: COLORS.textSecondary }}>
                                 +{previewData.stats.extractedImages.length - 5}
                               </span>
                             </div>
@@ -805,10 +893,10 @@ const PreviewScreen: React.FC<{
                   </div>
                 </div>
 
-                <div className="rounded-2xl p-6" style={{ backgroundColor: COLORS.bgCard }}>
-                  <h4 className="text-sm font-medium mb-4" style={{ color: COLORS.textSecondary }}>Extracted Text Preview</h4>
+                <div className="rounded-xl sm:rounded-2xl p-4 sm:p-6" style={{ backgroundColor: COLORS.bgCard }}>
+                  <h4 className="text-xs font-medium mb-3" style={{ color: COLORS.textSecondary }}>Extracted Text</h4>
                   <div 
-                    className="p-4 rounded-xl max-h-48 overflow-y-auto text-sm leading-relaxed font-mono"
+                    className="p-3 rounded-lg max-h-36 overflow-y-auto text-xs leading-relaxed"
                     style={{ backgroundColor: COLORS.bgDark, color: COLORS.textSecondary }}
                   >
                     {previewData.extractedText.slice(0, 3).map((text, i) => (
@@ -820,23 +908,23 @@ const PreviewScreen: React.FC<{
                   </div>
                 </div>
 
-                <div className="rounded-2xl p-6 mb-4" style={{ backgroundColor: COLORS.bgCard }}>
+                <div className="rounded-xl sm:rounded-2xl p-4 sm:p-6" style={{ backgroundColor: COLORS.bgCard }}>
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl flex items-center justify-center"
-                        style={{ backgroundColor: localApiKey ? `${COLORS.primaryGreen}20` : `${COLORS.accentBlue}20` }}>
-                        <Brain size={20} style={{ color: localApiKey ? COLORS.primaryGreen : COLORS.accentBlue }} />
+                      <div className="w-9 h-9 rounded-lg flex items-center justify-center"
+                        style={{ backgroundColor: COLORS.bgDark }}>
+                        <BrainCircuit size={18} style={{ color: localApiKey ? COLORS.accent : COLORS.textSecondary }} strokeWidth={1.5} />
                       </div>
                       <div>
-                        <h4 className="font-medium" style={{ color: COLORS.textPrimary }}>AI Layout Planning</h4>
-                        <p className="text-xs" style={{ color: COLORS.textSecondary }}>
-                          {localApiKey ? 'Gemini AI enabled' : 'Optional: Add API key for smarter layout'}
+                        <h4 className="text-sm font-medium" style={{ color: COLORS.textPrimary }}>AI Layout</h4>
+                        <p className="text-[10px]" style={{ color: COLORS.textSecondary }}>
+                          {localApiKey ? 'Enabled' : 'Optional'}
                         </p>
                       </div>
                     </div>
                     <button
                       onClick={() => setShowApiInput(!showApiInput)}
-                      className="px-3 py-1.5 rounded-lg text-sm font-medium transition-all"
+                      className="px-3 py-1.5 rounded-lg text-xs transition-colors hover:bg-zinc-700/50"
                       style={{ backgroundColor: COLORS.bgDark, color: COLORS.textSecondary }}
                     >
                       {showApiInput ? 'Hide' : localApiKey ? 'Edit' : 'Add Key'}
@@ -850,7 +938,7 @@ const PreviewScreen: React.FC<{
                         value={localApiKey}
                         onChange={(e) => setLocalApiKey(e.target.value)}
                         placeholder="Enter Gemini API key..."
-                        className="w-full px-4 py-3 rounded-xl text-sm outline-none transition-all focus:ring-2"
+                        className="w-full px-3 py-2.5 rounded-lg text-sm outline-none border"
                         style={{ 
                           backgroundColor: COLORS.bgDark, 
                           color: COLORS.textPrimary,
@@ -863,17 +951,17 @@ const PreviewScreen: React.FC<{
                             onApiKeyChange?.(localApiKey);
                             setShowApiInput(false);
                           }}
-                          className="px-4 py-2 rounded-lg text-sm font-medium text-white"
-                          style={{ backgroundColor: COLORS.primaryGreen }}
+                          className="px-3 py-2 rounded-lg text-xs font-medium"
+                          style={{ backgroundColor: COLORS.accent, color: COLORS.bgDark }}
                         >
-                          Save Key
+                          Save
                         </button>
                         <button
                           onClick={() => {
                             setLocalApiKey('');
                             onApiKeyChange?.('');
                           }}
-                          className="px-4 py-2 rounded-lg text-sm"
+                          className="px-3 py-2 rounded-lg text-xs"
                           style={{ backgroundColor: COLORS.bgDark, color: COLORS.textSecondary }}
                         >
                           Clear
@@ -899,14 +987,14 @@ const PreviewScreen: React.FC<{
 
                 <button
                   onClick={() => onConvert(previewData)}
-                  className="w-full py-5 rounded-2xl flex items-center justify-center gap-3 text-xl font-bold text-white transition-all hover:scale-[1.02] active:scale-[0.98] shadow-xl"
+                  className="w-full py-3 sm:py-4 rounded-xl flex items-center justify-center gap-2 text-sm sm:text-base font-medium transition-all hover:opacity-90 active:scale-[0.99]"
                   style={{ 
-                    background: `linear-gradient(135deg, ${COLORS.primaryGreen}, ${COLORS.accentBlue})`,
-                    boxShadow: `0 10px 40px ${COLORS.primaryGreen}40`
+                    backgroundColor: COLORS.accent,
+                    color: COLORS.bgDark
                   }}
                 >
-                  <Wand2 size={28} />
-                  Magic Convert to Handwriting
+                  <Wand size={18} strokeWidth={1.5} />
+                  Convert to Handwriting
                 </button>
               </>
             )}
@@ -1036,9 +1124,9 @@ const ProcessingScreen: React.FC<{
   }, [previewData, apiKey, onComplete]);
 
   const stages = [
-    { label: 'Page Scanning', icon: FileText, done: currentPhase !== 'scanning', active: currentPhase === 'scanning' },
-    { label: 'AI Planning', icon: Brain, done: currentPhase === 'writing', active: currentPhase === 'planning' },
-    { label: 'Handwriting', icon: Type, done: progress >= 100, active: currentPhase === 'writing' },
+    { label: 'Scanning', icon: Scan, done: currentPhase !== 'scanning', active: currentPhase === 'scanning' },
+    { label: 'Planning', icon: BrainCircuit, done: currentPhase === 'writing', active: currentPhase === 'planning' },
+    { label: 'Writing', icon: Pencil, done: progress >= 100, active: currentPhase === 'writing' },
   ];
 
   return (
@@ -1048,10 +1136,10 @@ const ProcessingScreen: React.FC<{
       <div className="flex-1 flex flex-col">
         <Header onMenuClick={() => setSidebarOpen(true)} title="Processing Document" />
         
-        <main className="flex-1 p-6 overflow-auto">
-          <div className="max-w-4xl mx-auto space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="rounded-2xl p-6" style={{ backgroundColor: COLORS.bgCard }}>
+        <main className="flex-1 p-4 sm:p-6 overflow-auto">
+          <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="rounded-xl sm:rounded-2xl p-4 sm:p-6" style={{ backgroundColor: COLORS.bgCard }}>
                 {currentPhase === 'scanning' && previewData && (
                   <ScanningAnimation
                     totalPages={previewData.stats.totalPages}
@@ -1062,19 +1150,17 @@ const ProcessingScreen: React.FC<{
                 )}
                 
                 {currentPhase === 'planning' && (
-                  <div className="text-center py-12">
-                    <div className="w-24 h-24 rounded-2xl mx-auto mb-6 flex items-center justify-center relative" 
-                      style={{ background: `linear-gradient(135deg, ${COLORS.accentBlue}, ${COLORS.primaryGreen})` }}>
-                      <Brain className="text-white animate-pulse" size={48} />
-                      <div className="absolute inset-0 rounded-2xl animate-ping opacity-20"
-                        style={{ backgroundColor: COLORS.accentBlue }} />
+                  <div className="text-center py-8 sm:py-12">
+                    <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl mx-auto mb-4 sm:mb-6 flex items-center justify-center" 
+                      style={{ backgroundColor: COLORS.bgDark }}>
+                      <BrainCircuit className="animate-pulse" size={32} style={{ color: COLORS.textSecondary }} strokeWidth={1.5} />
                     </div>
-                    <h3 className="text-xl font-bold mb-2" style={{ color: COLORS.textPrimary }}>AI Planning Layout</h3>
-                    <p className="text-sm mb-4" style={{ color: COLORS.textSecondary }}>{aiPlanStatus}</p>
-                    <div className="flex flex-wrap gap-2 justify-center text-xs">
-                      {['Line breaks', 'Word spacing', 'Fractions', 'Q/A positions', 'Margins'].map((item, i) => (
-                        <span key={i} className="px-3 py-1 rounded-full" 
-                          style={{ backgroundColor: COLORS.bgDark, color: COLORS.primaryGreen }}>
+                    <h3 className="text-lg font-medium mb-2" style={{ color: COLORS.textPrimary }}>Planning Layout</h3>
+                    <p className="text-xs mb-4" style={{ color: COLORS.textSecondary }}>{aiPlanStatus}</p>
+                    <div className="flex flex-wrap gap-2 justify-center text-[10px]">
+                      {['Line breaks', 'Spacing', 'Fractions', 'Margins'].map((item, i) => (
+                        <span key={i} className="px-2 py-1 rounded-md" 
+                          style={{ backgroundColor: COLORS.bgDark, color: COLORS.textSecondary }}>
                           {item}
                         </span>
                       ))}
@@ -1083,25 +1169,25 @@ const ProcessingScreen: React.FC<{
                 )}
                 
                 {currentPhase === 'writing' && (
-                  <div className="text-center py-8">
-                    <div className="w-20 h-20 rounded-2xl mx-auto mb-4 flex items-center justify-center" 
-                      style={{ background: `linear-gradient(135deg, ${COLORS.primaryGreen}, ${COLORS.accentBlue})` }}>
-                      <PenTool className="text-white" size={36} />
+                  <div className="text-center py-6 sm:py-8">
+                    <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl mx-auto mb-4 flex items-center justify-center" 
+                      style={{ backgroundColor: COLORS.bgDark }}>
+                      <Pen size={24} style={{ color: COLORS.textSecondary }} strokeWidth={1.5} />
                     </div>
-                    <h3 className="text-xl font-bold mb-2" style={{ color: COLORS.textPrimary }}>Writing Pages</h3>
-                    <p className="text-sm" style={{ color: COLORS.textSecondary }}>
-                      Generating human-like handwriting with micro-variations...
+                    <h3 className="text-lg font-medium mb-2" style={{ color: COLORS.textPrimary }}>Writing</h3>
+                    <p className="text-xs" style={{ color: COLORS.textSecondary }}>
+                      Generating handwriting...
                     </p>
                     
-                    <div className="mt-6 grid grid-cols-3 gap-3">
+                    <div className="mt-4 grid grid-cols-3 gap-2">
                       {[
                         { label: 'Letters', value: stats.letters },
                         { label: 'Speed', value: `${stats.speed}/s` },
                         { label: 'Pages', value: stats.pages },
                       ].map((stat, i) => (
-                        <div key={i} className="p-3 rounded-xl" style={{ backgroundColor: COLORS.bgDark }}>
-                          <p className="text-lg font-bold" style={{ color: COLORS.primaryGreen }}>{stat.value}</p>
-                          <p className="text-xs" style={{ color: COLORS.textSecondary }}>{stat.label}</p>
+                        <div key={i} className="p-2 rounded-lg" style={{ backgroundColor: COLORS.bgDark }}>
+                          <p className="text-base font-medium" style={{ color: COLORS.textPrimary }}>{stat.value}</p>
+                          <p className="text-[10px]" style={{ color: COLORS.textSecondary }}>{stat.label}</p>
                         </div>
                       ))}
                     </div>
@@ -1109,57 +1195,54 @@ const ProcessingScreen: React.FC<{
                 )}
               </div>
 
-              <div className="rounded-2xl p-6" style={{ backgroundColor: COLORS.bgCard }}>
-                <h4 className="text-sm font-medium mb-4" style={{ color: COLORS.textSecondary }}>Processing Progress</h4>
+              <div className="rounded-xl sm:rounded-2xl p-4 sm:p-6" style={{ backgroundColor: COLORS.bgCard }}>
+                <h4 className="text-xs font-medium mb-4" style={{ color: COLORS.textSecondary }}>Progress</h4>
                 
-                <div className="space-y-4 mb-6">
-                  <div className="flex justify-between text-sm">
+                <div className="space-y-3 mb-5">
+                  <div className="flex justify-between text-xs">
                     <span style={{ color: COLORS.textSecondary }}>{currentStatus}</span>
-                    <span className="font-bold" style={{ color: COLORS.primaryGreen }}>{progress}%</span>
+                    <span className="font-medium" style={{ color: COLORS.textPrimary }}>{progress}%</span>
                   </div>
-                  <div className="h-3 rounded-full overflow-hidden" style={{ backgroundColor: COLORS.bgDark }}>
+                  <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: COLORS.bgDark }}>
                     <div 
                       className="h-full transition-all duration-300 rounded-full"
-                      style={{ width: `${progress}%`, background: `linear-gradient(90deg, ${COLORS.primaryGreen}, ${COLORS.accentBlue})` }}
+                      style={{ width: `${progress}%`, backgroundColor: COLORS.accent }}
                     />
                   </div>
                 </div>
 
-                <div className="space-y-4">
+                <div className="space-y-2">
                   {stages.map((stage, i) => (
-                    <div key={i} className="flex items-center gap-4 p-3 rounded-xl transition-all"
-                      style={{ backgroundColor: stage.active ? `${COLORS.primaryGreen}10` : COLORS.bgDark }}>
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all`}
+                    <div key={i} className="flex items-center gap-3 p-2.5 rounded-lg transition-all"
+                      style={{ backgroundColor: stage.active ? COLORS.bgDark : 'transparent' }}>
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all`}
                         style={{ 
-                          backgroundColor: stage.done ? COLORS.primaryGreen : stage.active ? COLORS.accentBlue : COLORS.border,
+                          backgroundColor: stage.done ? COLORS.accent : COLORS.bgDark,
                         }}>
                         {stage.done ? (
-                          <CheckCircle size={20} className="text-white" />
+                          <CheckCircle2 size={16} style={{ color: COLORS.bgDark }} strokeWidth={1.5} />
                         ) : stage.active ? (
-                          <Loader size={20} className="text-white animate-spin" />
+                          <Loader2 size={16} className="animate-spin" style={{ color: COLORS.textSecondary }} strokeWidth={1.5} />
                         ) : (
-                          <stage.icon size={20} style={{ color: COLORS.textSecondary }} />
+                          <stage.icon size={16} style={{ color: COLORS.textSecondary }} strokeWidth={1.5} />
                         )}
                       </div>
                       <div className="flex-1">
-                        <p className="font-medium" style={{ color: stage.done || stage.active ? COLORS.textPrimary : COLORS.textSecondary }}>
+                        <p className="text-sm font-medium" style={{ color: stage.done || stage.active ? COLORS.textPrimary : COLORS.textSecondary }}>
                           {stage.label}
-                        </p>
-                        <p className="text-xs" style={{ color: COLORS.textSecondary }}>
-                          {stage.done ? 'Completed' : stage.active ? 'In progress...' : 'Waiting'}
                         </p>
                       </div>
                     </div>
                   ))}
                 </div>
 
-                <div className="mt-6 p-4 rounded-xl" style={{ backgroundColor: COLORS.bgDark }}>
-                  <p className="text-xs font-medium mb-2" style={{ color: COLORS.textSecondary }}>Processing: {fileName}</p>
-                  <div className="flex gap-4 text-xs">
-                    <span style={{ color: COLORS.primaryGreen }}>
+                <div className="mt-4 p-3 rounded-lg" style={{ backgroundColor: COLORS.bgDark }}>
+                  <p className="text-xs mb-1 truncate" style={{ color: COLORS.textSecondary }}>{fileName}</p>
+                  <div className="flex gap-3 text-[10px]">
+                    <span style={{ color: COLORS.textSecondary }}>
                       {previewData?.stats.totalPages || 0} pages
                     </span>
-                    <span style={{ color: COLORS.accentBlue }}>
+                    <span style={{ color: COLORS.textSecondary }}>
                       {previewData?.stats.totalCharacters.toLocaleString() || 0} chars
                     </span>
                   </div>
@@ -1382,8 +1465,8 @@ const PageContent = memo(({ solution, index, globalSeed, penThickness, isScanner
         
         {hasAIPlan && (
           <div className="mt-4 flex items-center gap-1.5 text-xs opacity-30">
-            <Brain size={12} />
-            <span>AI-planned layout</span>
+            <BrainCircuit size={12} strokeWidth={1.5} />
+            <span>AI layout</span>
           </div>
         )}
       </div>
@@ -1469,112 +1552,174 @@ const ResultsScreen: React.FC<{ solutions: QuestionSolution[], onReset: () => vo
   }, [solutions, searchQuery]);
 
   return (
-    <div className="flex min-h-screen" style={{ backgroundColor: '#e5e5e5' }}>
+    <div className="flex min-h-screen" style={{ backgroundColor: '#f4f4f5' }}>
       <div className="fixed left-0 top-0 h-full w-64 z-50 hidden lg:block" style={{ backgroundColor: COLORS.bgCard }}>
         <Sidebar isOpen={true} onClose={() => {}} currentTool="handwriting" onToolChange={() => {}} />
       </div>
 
-      <div className="flex-1 lg:ml-64">
-        <div className="sticky top-0 z-40 h-16 flex items-center justify-between px-6 border-b no-print" style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }}>
-          <div className="flex items-center gap-4">
-            <button onClick={() => setSidebarOpen(true)} className="lg:hidden p-2" style={{ color: COLORS.textSecondary }}>
-              <Menu size={24} />
+      <div className="flex-1 lg:ml-64 relative">
+        <div className="sticky top-0 z-40 h-14 sm:h-16 flex items-center justify-between px-3 sm:px-6 border-b no-print" 
+             style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }}>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <button onClick={() => setSidebarOpen(true)} className="lg:hidden p-2 rounded-lg transition-colors" style={{ color: COLORS.textSecondary }}>
+              <PanelLeft size={20} strokeWidth={1.5} />
             </button>
-            <button onClick={onReset} className="flex items-center gap-2 px-4 py-2 rounded-xl transition-all" style={{ backgroundColor: COLORS.bgDark, color: COLORS.textSecondary }}>
-              <ArrowLeft size={18} /> Back
+            <button onClick={onReset} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm transition-colors hover:bg-zinc-800/50" 
+                    style={{ color: COLORS.textSecondary }}>
+              <ArrowLeft size={16} strokeWidth={1.5} /> <span className="hidden sm:inline">Back</span>
+            </button>
+          </div>
+
+          <div className="flex items-center gap-1.5 p-1 rounded-lg" style={{ backgroundColor: COLORS.bgDark }}>
+            <button onClick={() => goToPage(currentPage - 1)} disabled={currentPage === 0} 
+                    className="p-1.5 sm:p-2 rounded-md disabled:opacity-30 transition-colors hover:bg-zinc-700/50" style={{ color: COLORS.textSecondary }}>
+              <ChevronLeft size={16} strokeWidth={1.5} />
+            </button>
+            <div className="px-2 sm:px-3 py-1 flex items-center gap-1.5">
+              <span className="text-sm font-medium" style={{ color: COLORS.textPrimary }}>{currentPage + 1}</span>
+              <span className="text-xs" style={{ color: COLORS.textSecondary }}>/ {solutions.length}</span>
+            </div>
+            <button onClick={() => goToPage(currentPage + 1)} disabled={currentPage === solutions.length - 1} 
+                    className="p-1.5 sm:p-2 rounded-md disabled:opacity-30 transition-colors hover:bg-zinc-700/50" style={{ color: COLORS.textSecondary }}>
+              <ChevronRight size={16} strokeWidth={1.5} />
             </button>
           </div>
 
           <div className="flex items-center gap-2">
-            <button onClick={() => goToPage(currentPage - 1)} disabled={currentPage === 0} className="p-2 rounded-lg disabled:opacity-30" style={{ backgroundColor: COLORS.bgDark, color: COLORS.textPrimary }}>
-              <ChevronLeft size={18} />
-            </button>
-            <div className="px-4 py-2 rounded-lg" style={{ backgroundColor: COLORS.bgDark }}>
-              <span style={{ color: COLORS.textSecondary }}>Page </span>
-              <span className="font-bold" style={{ color: COLORS.textPrimary }}>{currentPage + 1}</span>
-              <span style={{ color: COLORS.textSecondary }}> / {solutions.length}</span>
-            </div>
-            <button onClick={() => goToPage(currentPage + 1)} disabled={currentPage === solutions.length - 1} className="p-2 rounded-lg disabled:opacity-30" style={{ backgroundColor: COLORS.bgDark, color: COLORS.textPrimary }}>
-              <ChevronRight size={18} />
-            </button>
-          </div>
-
-          <div className="flex items-center gap-3">
             {hasAIPlan && (
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg" style={{ backgroundColor: `${COLORS.primaryGreen}20` }}>
-                <Brain size={14} style={{ color: COLORS.primaryGreen }} />
-                <span className="text-xs font-medium" style={{ color: COLORS.primaryGreen }}>
-                  AI Layout ({aiPlannedPages} pages)
+              <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-md" style={{ backgroundColor: COLORS.bgDark }}>
+                <BrainCircuit size={12} style={{ color: COLORS.textSecondary }} strokeWidth={1.5} />
+                <span className="text-[10px]" style={{ color: COLORS.textSecondary }}>
+                  AI ({aiPlannedPages})
                 </span>
               </div>
             )}
             
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: COLORS.bgDark }}>
-              <Search size={16} style={{ color: COLORS.textSecondary }} />
+            <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-md" style={{ backgroundColor: COLORS.bgDark }}>
+              <Search size={14} style={{ color: COLORS.textSecondary }} strokeWidth={1.5} />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search..."
-                className="bg-transparent outline-none w-32 text-sm"
+                className="bg-transparent outline-none w-24 text-xs"
                 style={{ color: COLORS.textPrimary }}
               />
             </div>
 
-            <div className="flex items-center gap-1 px-2 py-1 rounded-lg" style={{ backgroundColor: COLORS.bgDark }}>
-              <button onClick={() => setZoom(z => Math.max(50, z - 10))} className="p-1" style={{ color: COLORS.textSecondary }}>
-                <ZoomOut size={16} />
+            <div className="hidden sm:flex items-center gap-0.5 px-1.5 py-1 rounded-md" style={{ backgroundColor: COLORS.bgDark }}>
+              <button onClick={() => setZoom(z => Math.max(50, z - 10))} className="p-1 rounded transition-colors hover:bg-zinc-700/50" style={{ color: COLORS.textSecondary }}>
+                <ZoomOut size={14} strokeWidth={1.5} />
               </button>
-              <span className="text-xs w-10 text-center" style={{ color: COLORS.textSecondary }}>{zoom}%</span>
-              <button onClick={() => setZoom(z => Math.min(150, z + 10))} className="p-1" style={{ color: COLORS.textSecondary }}>
-                <ZoomIn size={16} />
+              <span className="text-[10px] w-8 text-center" style={{ color: COLORS.textSecondary }}>{zoom}%</span>
+              <button onClick={() => setZoom(z => Math.min(150, z + 10))} className="p-1 rounded transition-colors hover:bg-zinc-700/50" style={{ color: COLORS.textSecondary }}>
+                <ZoomIn size={14} strokeWidth={1.5} />
               </button>
             </div>
 
-            <button onClick={() => handleDownload('clean')} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium" style={{ backgroundColor: COLORS.bgDark, color: COLORS.textSecondary }}>
-              <FileText size={16} /> Clean
+            <button onClick={() => handleDownload('clean')} className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs transition-colors hover:bg-zinc-700/50" style={{ backgroundColor: COLORS.bgDark, color: COLORS.textSecondary }}>
+              <FileText size={14} strokeWidth={1.5} /> Clean
             </button>
             
-            <button onClick={() => handleDownload('scan')} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-white" style={{ background: `linear-gradient(135deg, ${COLORS.primaryGreen}, ${COLORS.accentBlue})` }}>
-              <Camera size={16} /> Scanned
+            <button onClick={() => handleDownload('scan')} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium" style={{ backgroundColor: COLORS.accent, color: COLORS.bgDark }}>
+              <Scan size={14} strokeWidth={1.5} /> <span className="hidden sm:inline">Export</span>
             </button>
           </div>
         </div>
 
-        <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-4 no-print">
-          {showTools && (
-            <div className="p-4 rounded-2xl shadow-xl mb-2" style={{ backgroundColor: COLORS.bgCard }}>
-              <label className="text-xs font-medium mb-3 flex items-center gap-2" style={{ color: COLORS.textSecondary }}>
-                <PenTool size={12} /> Ink Flow
-              </label>
-              <div className="flex items-center gap-3">
-                <button onClick={() => setPenThickness(p => Math.max(0.3, p - 0.1))} className="p-2 rounded-lg" style={{ backgroundColor: COLORS.bgDark, color: COLORS.textSecondary }}>
-                  <Minus size={14} />
-                </button>
-                <div className="w-24 h-2 rounded-full overflow-hidden" style={{ backgroundColor: COLORS.bgDark }}>
-                  <div className="h-full transition-all" style={{ width: `${((penThickness - 0.3) / 0.7) * 100}%`, background: `linear-gradient(90deg, ${COLORS.primaryGreen}, ${COLORS.accentBlue})` }} />
+        <div className="fixed bottom-4 sm:bottom-6 right-4 sm:right-6 z-50 flex flex-col items-end gap-3 no-print">
+          <AnimatePresence>
+            {showTools && (
+              <motion.div 
+                initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                className="p-4 rounded-xl shadow-lg mb-2 border" 
+                style={{ backgroundColor: COLORS.bgCard, borderColor: COLORS.border }}
+              >
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-[10px] font-medium mb-2 flex items-center gap-1.5" style={{ color: COLORS.textSecondary }}>
+                      <Pen size={10} strokeWidth={1.5} /> Ink
+                    </label>
+                    <div className="flex items-center gap-3">
+                      <button onClick={() => setPenThickness(p => Math.max(0.3, p - 0.1))} className="p-1.5 rounded-md transition-colors hover:bg-zinc-700/50" style={{ backgroundColor: COLORS.bgDark, color: COLORS.textSecondary }}>
+                        <Minus size={12} strokeWidth={1.5} />
+                      </button>
+                      <div className="w-24 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: COLORS.bgDark }}>
+                        <motion.div 
+                          className="h-full rounded-full" 
+                          animate={{ width: `${((penThickness - 0.3) / 0.7) * 100}%` }}
+                          style={{ backgroundColor: COLORS.accent }} 
+                        />
+                      </div>
+                      <button onClick={() => setPenThickness(p => Math.min(1.0, p + 0.1))} className="p-1.5 rounded-md transition-colors hover:bg-zinc-700/50" style={{ backgroundColor: COLORS.bgDark, color: COLORS.textSecondary }}>
+                        <Plus size={12} strokeWidth={1.5} />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-medium mb-2 block" style={{ color: COLORS.textSecondary }}>
+                       Style
+                    </label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {[
+                        { name: 'Neat', thickness: 0.45 },
+                        { name: 'Natural', thickness: 0.6 },
+                        { name: 'Heavy', thickness: 0.8 },
+                        { name: 'Fine', thickness: 0.35 }
+                      ].map(style => (
+                        <button 
+                          key={style.name}
+                          onClick={() => setPenThickness(style.thickness)}
+                          className="px-2.5 py-1.5 rounded-md text-[10px] font-medium transition-colors"
+                          style={{ 
+                            backgroundColor: Math.abs(penThickness - style.thickness) < 0.05 ? COLORS.accent : COLORS.bgDark,
+                            color: Math.abs(penThickness - style.thickness) < 0.05 ? COLORS.bgDark : COLORS.textSecondary,
+                          }}
+                        >
+                          {style.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
-                <button onClick={() => setPenThickness(p => Math.min(1.0, p + 0.1))} className="p-2 rounded-lg" style={{ backgroundColor: COLORS.bgDark, color: COLORS.textSecondary }}>
-                  <Plus size={14} />
-                </button>
-              </div>
-            </div>
-          )}
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-          <div className="flex gap-3">
-            <button onClick={() => setShowTools(!showTools)} className="p-4 rounded-full shadow-xl transition-all text-white" style={{ background: showTools ? COLORS.primaryGreen : COLORS.bgCard }}>
-              <PenTool size={22} />
-            </button>
-            <button onClick={toggleScanner} className="p-4 rounded-full shadow-xl transition-all text-white" style={{ background: isScannerMode ? COLORS.primaryGreen : COLORS.bgCard }}>
-              {isScannerMode ? <Eye size={22} /> : <Sparkles size={22} />}
-            </button>
-            <button onClick={regenerate} className="p-4 rounded-full shadow-xl transition-all text-white" style={{ background: `linear-gradient(135deg, ${COLORS.primaryGreen}, ${COLORS.accentBlue})` }}>
-              <RefreshCcw size={22} />
-            </button>
+          <div className="flex gap-2">
+            <motion.button 
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setShowTools(!showTools)} 
+              className="p-3 sm:p-4 rounded-xl shadow-lg transition-all" 
+              style={{ backgroundColor: showTools ? COLORS.accent : COLORS.bgCard, color: showTools ? COLORS.bgDark : COLORS.textSecondary }}
+            >
+              <Sliders size={18} strokeWidth={1.5} />
+            </motion.button>
+            
+            <motion.button 
+              whileTap={{ scale: 0.95 }}
+              onClick={toggleScanner} 
+              className="p-3 sm:p-4 rounded-xl shadow-lg transition-all" 
+              style={{ backgroundColor: isScannerMode ? COLORS.accent : COLORS.bgCard, color: isScannerMode ? COLORS.bgDark : COLORS.textSecondary }}
+            >
+              {isScannerMode ? <Eye size={18} strokeWidth={1.5} /> : <Sparkles size={18} strokeWidth={1.5} />}
+            </motion.button>
+            
+            <motion.button 
+              whileTap={{ scale: 0.95, rotate: 180 }}
+              onClick={regenerate} 
+              className="p-3 sm:p-4 rounded-xl shadow-lg transition-all" 
+              style={{ backgroundColor: COLORS.accent, color: COLORS.bgDark }}
+            >
+              <RotateCcw size={18} strokeWidth={1.5} />
+            </motion.button>
           </div>
         </div>
 
-        <div ref={containerRef} className="w-full flex flex-col items-center pt-8 pb-24">
+        <div ref={containerRef} className="w-full flex flex-col items-center pt-4 sm:pt-8 pb-20 sm:pb-24 px-2 sm:px-4">
           <div className="transition-transform origin-top" style={{ transform: `scale(${zoom / 100})` }}>
             <List<VirtualizedRowCustomProps>
               listRef={listRef}
@@ -1649,6 +1794,20 @@ const App: React.FC = () => {
           onConvert={(preview) => {
             setPreviewData(preview);
             setAppState('processing');
+            // Advanced History Feature
+            try {
+              const history = JSON.parse(localStorage.getItem('assignify_history') || '[]');
+              const newEntry = {
+                id: Date.now(),
+                name: uploadedFile.name,
+                date: new Date().toISOString(),
+                stats: preview.stats,
+                thumbnail: preview.thumbnail.slice(0, 500) // Small snippet for preview
+              };
+              localStorage.setItem('assignify_history', JSON.stringify([newEntry, ...history].slice(0, 10)));
+            } catch (e) {
+              console.error('Failed to save history', e);
+            }
           }}
           onBack={() => {
             setUploadedFile(null);
