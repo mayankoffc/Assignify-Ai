@@ -4,7 +4,7 @@
 
 # Run and deploy your AI Studio app
 
-This contains everything you need to run your app locally.
+This contains everything you need to run your app locally or in GitHub Codespaces.
 
 View your app in AI Studio: https://ai.studio/apps/drive/1WMlM2SXKGDUIIReak8i5rF29iZF8fEys
 
@@ -15,6 +15,10 @@ View your app in AI Studio: https://ai.studio/apps/drive/1WMlM2SXKGDUIIReak8i5rF
 
 1. Install dependencies:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+2. Set the `VITE_API_KEY` in [.env.local](.env.local) to your Gemini API key
 3. Run the app:
    `npm run dev`
+
+## Run in GitHub Codespaces
+
+For detailed instructions on running this application in GitHub Codespaces, see [CODESPACES.md](CODESPACES.md).
